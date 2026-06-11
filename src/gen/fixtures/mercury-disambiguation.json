@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "title": "Mercury",
+  "byteLength": 1900,
+  "sections": [],
+  "links": [
+    { "title": "Mercury (planet)", "byteLength": 96000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mercury (element)", "byteLength": 84000, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mercury (mythology)", "byteLength": 42000, "isStub": false, "positionIndex": 2, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Freddie Mercury", "byteLength": 110000, "isStub": false, "positionIndex": 3, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mercury Records", "byteLength": 28000, "isStub": false, "positionIndex": 4, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Project Mercury", "byteLength": 67000, "isStub": false, "positionIndex": 5, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mercury, Nevada", "byteLength": 1600, "isStub": true, "positionIndex": 6, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mercury (programming language)", "byteLength": 1400, "isStub": true, "positionIndex": 7, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Disambiguation pages"],
+  "hasInfobox": false,
+  "referenceCount": 0,
+  "pageviews60d": 150000,
+  "isDisambiguation": true,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

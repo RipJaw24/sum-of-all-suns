@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "title": "Bioluminescent bay",
+  "byteLength": 9300,
+  "sections": [
+    { "title": "Causes", "byteLength": 3100, "imageCount": 1 },
+    { "title": "Locations", "byteLength": 4200, "imageCount": 2 },
+    { "title": "Conservation", "byteLength": 1100, "imageCount": 0 }
+  ],
+  "links": [
+    { "title": "Bioluminescence", "byteLength": 58000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Dinoflagellate", "byteLength": 47000, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Sea sparkle", "byteLength": 30000, "isStub": false, "positionIndex": 2, "isDisambiguation": false, "isRedirect": true, "resolvedTitle": "Noctiluca scintillans" },
+    { "title": "Mosquito Bay", "byteLength": 1700, "isStub": true, "positionIndex": 3, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Luminous lagoon", "byteLength": 1200, "isStub": true, "positionIndex": 4, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Bays", "Bioluminescence", "Good articles"],
+  "hasInfobox": true,
+  "referenceCount": 12,
+  "pageviews60d": 4000,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

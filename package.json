@@ -1,0 +1,24 @@
+{
+  "name": "sum-of-all-suns",
+  "version": "1.0.0",
+  "description": "Sum of All Suns — a space roguelike where the galaxy is secretly the Wikipedia link graph",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  },
+  "private": true,
+  "type": "module"
+}

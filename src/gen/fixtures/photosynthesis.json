@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "title": "Photosynthesis",
+  "byteLength": 102456,
+  "sections": [
+    { "title": "History", "byteLength": 8420, "imageCount": 2 },
+    { "title": "Photosynthetic membranes and organelles", "byteLength": 6210, "imageCount": 3 },
+    { "title": "Light-dependent reactions", "byteLength": 11830, "imageCount": 4 },
+    { "title": "Light-independent reactions", "byteLength": 9540, "imageCount": 2 },
+    { "title": "Order and kinetics", "byteLength": 1380, "imageCount": 0 },
+    { "title": "Efficiency", "byteLength": 7120, "imageCount": 1 },
+    { "title": "Evolution", "byteLength": 5890, "imageCount": 1 },
+    { "title": "Experimental history", "byteLength": 12060, "imageCount": 3 },
+    { "title": "Factors", "byteLength": 4470, "imageCount": 0 },
+    { "title": "See also", "byteLength": 310, "imageCount": 0 }
+  ],
+  "links": [
+    { "title": "Oxygen", "byteLength": 91000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Carbon dioxide", "byteLength": 88000, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Chlorophyll", "byteLength": 31000, "isStub": false, "positionIndex": 2, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Cyanobacteria", "byteLength": 64000, "isStub": false, "positionIndex": 3, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Calvin cycle", "byteLength": 22000, "isStub": false, "positionIndex": 4, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Chemiosmosis", "byteLength": 1800, "isStub": true, "positionIndex": 5, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Water splitting", "byteLength": 14000, "isStub": false, "positionIndex": 6, "isDisambiguation": false, "isRedirect": true, "resolvedTitle": "Photolysis" },
+    { "title": "Anoxygenic photosynthesis", "byteLength": 1500, "isStub": true, "positionIndex": 7, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Thylakoid", "byteLength": 27000, "isStub": false, "positionIndex": 8, "isDisambiguation": false, "isRedirect": false },
+    { "title": "ATP synthase", "byteLength": 33000, "isStub": false, "positionIndex": 9, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Chloroplast", "byteLength": 71000, "isStub": false, "positionIndex": 10, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Stoma", "byteLength": 19000, "isStub": false, "positionIndex": 11, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Crassulacean acid metabolism", "byteLength": 25000, "isStub": false, "positionIndex": 12, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Quantum biology", "byteLength": 17000, "isStub": false, "positionIndex": 13, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": [
+    "Photosynthesis",
+    "Plant physiology",
+    "Cellular respiration",
+    "Metabolism",
+    "Biological processes"
+  ],
+  "hasInfobox": true,
+  "referenceCount": 135,
+  "pageviews60d": 720000,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}
