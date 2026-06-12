@@ -55,6 +55,7 @@ import {
 } from './run';
 import { derelictsFor, type Derelict } from './salvage';
 import { makeShip, updateShip } from './ship';
+import { drawSite, siteFragment } from './site';
 import { pickStart } from './startPool';
 import {
   drawSummary,
@@ -120,6 +121,7 @@ async function boot(): Promise<void> {
   let derelicts: Derelict[] = [];
   let lastSource: ArticleSource = 'cache';
   let mapOpen = false;
+  let siteOpen = false; // [Q] scan panel (site.ts), only while a body is near
   let transition: Transition | null = null;
   let mode: Mode = run.status === 'dead' ? 'summary' : 'flying';
   let dockedBody: BodySpec | null = null;
@@ -151,6 +153,7 @@ async function boot(): Promise<void> {
     spec = generateSystem(meta);
     gates = gatesFor(spec, run.previousTitle);
     derelicts = unlootedDerelicts();
+    siteOpen = false;
 
     // Spawn at the gate that leads back where we came from (it always
     // exists after a jump, §4.2); fresh runs start in open space.
@@ -231,6 +234,21 @@ async function boot(): Promise<void> {
     for (const derelict of derelicts) {
       const d = Math.hypot(derelict.x - ship.x, derelict.y - ship.y);
       consider(d, INTERACT_RANGE, () => ({ kind: 'salvage', derelict }));
+    }
+    return best;
+  }
+
+  /** Nearest body of any type in scan range — the [Q] site-panel target. */
+  function nearestBody(t: number): BodySpec | null {
+    let best: BodySpec | null = null;
+    let bestD = Infinity;
+    for (const body of spec.bodies) {
+      const pos = bodyPosition(body, t);
+      const d = Math.hypot(pos.x - ship.x, pos.y - ship.y);
+      if (d < body.radius + BODY_RANGE_PAD && d < bestD) {
+        bestD = d;
+        best = body;
+      }
     }
     return best;
   }
@@ -382,6 +400,11 @@ async function boot(): Promise<void> {
 
     const target = jumping || dying ? null : findInteractable(t);
 
+    // §6 site panel: [Q] toggles the scan of the nearest body in range.
+    const nearBody = jumping || dying ? null : nearestBody(t);
+    if (!nearBody) siteOpen = false;
+    else if (input.wasPressed('KeyQ')) siteOpen = !siteOpen;
+
     // Continuous hull drains: ambient/belt/stellar hazards + active skim (§7).
     let hazardLabel: string | undefined;
     let skimming = false;
@@ -462,6 +485,7 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: run.route.length - 1,
       prompt: jumping || dying || !target ? null : promptFor(target, skimming),
+      ...(nearBody && !siteOpen ? { subPrompt: `[Q] scan ${nearBody.name}` } : {}),
       adrift,
       damageFlash: dying ? 1 : damageFlash,
       ...(hazardLabel ? { hazardLabel } : {}),
@@ -473,7 +497,15 @@ async function boot(): Promise<void> {
     };
 
     renderer.draw(spec, gates, ship, t, hud, derelicts);
+    if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
     if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);
+
+    if (DEBUG) {
+      Object.assign(debugState, {
+        siteOpen,
+        siteFragment: nearBody ? siteFragment(nearBody, spec) : null,
+      });
+    }
 
     if (transition) {
       ctx.fillStyle = `rgba(4, 5, 10, ${Math.min(1, Math.max(0, transition.alpha))})`;

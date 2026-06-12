@@ -41,6 +41,8 @@ export interface HudState {
   cargoMax: number;
   jumps: number;
   prompt: HudPrompt | null;
+  /** Secondary hint under the main prompt (e.g. '[Q] scan …'). */
+  subPrompt?: string;
   /** e.g. degraded-telemetry warning. */
   notice?: string;
   /** Active hazard warning, e.g. 'ASTEROID IMPACTS'. */
@@ -348,6 +350,12 @@ export class Renderer {
       ctx.font = '14px monospace';
       ctx.fillStyle = hud.prompt.tone === 'ok' ? '#7fd4ff' : '#ff6b4a';
       ctx.fillText(hud.prompt.text, ctx.canvas.width / 2, ctx.canvas.height - 40);
+    }
+    if (hud.subPrompt) {
+      ctx.textAlign = 'center';
+      ctx.font = '12px monospace';
+      ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
+      ctx.fillText(hud.subPrompt, ctx.canvas.width / 2, ctx.canvas.height - 20);
     }
   }
 }

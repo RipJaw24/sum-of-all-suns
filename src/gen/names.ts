@@ -83,3 +83,8 @@ export function moonName(parentBodyName: string, index: number): string {
 export function stationName(rng: Rng): string {
   return `${rng.pick(STATION_PREFIX)} ${word(rng, 1, 2)}`;
 }
+
+/** One laundered word from the caller's stream (lore fragments, M3). */
+export function loreWord(rng: Rng): string {
+  return word(rng, 1, 3);
+}
