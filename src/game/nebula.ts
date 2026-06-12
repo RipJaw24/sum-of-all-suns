@@ -113,7 +113,7 @@ const FRAGMENT = /* glsl */ `
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
       v += a * snoise(p);
       p *= 2.0;
       a *= 0.5;
@@ -121,22 +121,67 @@ const FRAGMENT = /* glsl */ `
     return v;
   }
 
+  float detailFbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+      v += a * snoise(p);
+      p = mat2(1.72, -1.18, 1.18, 1.72) * p;
+      a *= 0.52;
+    }
+    return v;
+  }
+
+  float ridge(vec2 p) {
+    float n = detailFbm(p);
+    return 1.0 - abs(n * 1.35);
+  }
+
   void main() {
-    // Screen px -> noise space; /900 keeps cloud size window-independent.
-    vec2 p = (vUv * uResolution + uCamera) / 900.0 * uScale;
-    vec2 w = vec2(fbm(p + uOffset1), fbm(p + uOffset2));
-    vec2 q = p + uWarp * w;
-    float n1 = fbm(q + uOffset1) * 0.5 + 0.5;
-    float n2 = fbm(q * 1.7 + uOffset2) * 0.5 + 0.5;
-    float n3 = fbm(q * 2.3 - uOffset1) * 0.5 + 0.5;
+    vec2 screen = vUv * uResolution;
+    // Screen px -> noise space; large divisors keep cloud size window-independent.
+    vec2 farP = (screen + uCamera * 0.08) / 1500.0 * uScale;
+    vec2 midP = (screen + uCamera * 0.15) / 900.0 * uScale;
+    vec2 nearP = (screen + uCamera * 0.24) / 560.0 * uScale;
+
+    vec2 farWarp = vec2(fbm(farP + uOffset1 * 0.41), fbm(farP + uOffset2 * 0.37));
+    vec2 midWarp = vec2(fbm(midP + uOffset1), fbm(midP + uOffset2));
+    vec2 nearWarp = vec2(
+      detailFbm(nearP * 0.9 + uOffset2),
+      detailFbm(nearP * 0.9 - uOffset1)
+    );
+
+    vec2 fq = farP + farWarp * uWarp * 0.75;
+    vec2 mq = midP + midWarp * uWarp;
+    vec2 nq = nearP + nearWarp * uWarp * 0.38 + midWarp * 0.28;
+
+    float farNoise = fbm(fq + uOffset2 * 0.18) * 0.5 + 0.5;
+    float bodyNoise = fbm(mq + uOffset1) * 0.5 + 0.5;
+    float colorNoise = fbm(mq * 1.65 + uOffset2) * 0.5 + 0.5;
+    float knotNoise = detailFbm(mq * 2.45 - uOffset1) * 0.5 + 0.5;
+    float filamentNoise = ridge(nq * 2.2 + uOffset1 * 0.23);
+    float dustNoise = snoise(nq * 34.0 + uOffset2);
 
     vec3 bg = vec3(0.016, 0.020, 0.039); // #04050a, the world clear color
     // Keep it a BACKDROP: sparse band coverage, gentle mix — the starfield
     // and bodies must stay the brightest things on screen.
-    float band = smoothstep(0.55, 0.95, n1);
-    vec3 cloud = mix(uColA, uColB, clamp(n2, 0.0, 1.0));
-    vec3 col = mix(bg, cloud, band * 0.45 * uIntensity);
-    col += uColC * pow(clamp(n3, 0.0, 1.0), 4.0) * 0.12 * uIntensity;
+    float farFog = smoothstep(0.34, 0.88, farNoise) * 0.18;
+    float body = smoothstep(0.50, 0.90, bodyNoise) * 0.46;
+    float wisps = smoothstep(0.78, 0.97, filamentNoise) * 0.28;
+    float knots = pow(clamp(knotNoise, 0.0, 1.0), 6.0) * smoothstep(0.58, 0.88, bodyNoise);
+    float dust = smoothstep(0.82, 0.98, dustNoise) * (0.06 + wisps * 0.14);
+
+    vec3 deepCloud = mix(uColA * 0.70, uColB * 0.55, clamp(farNoise, 0.0, 1.0));
+    vec3 cloud = mix(uColA, uColB, clamp(colorNoise, 0.0, 1.0));
+    vec3 wispCol = mix(uColB, uColC, 0.65);
+
+    vec3 col = bg;
+    col = mix(col, deepCloud, farFog * uIntensity);
+    col = mix(col, cloud, body * uIntensity);
+    col += wispCol * wisps * 0.22 * uIntensity;
+    col += uColC * knots * 0.20 * uIntensity;
+    col += uColC * dust * 0.08 * uIntensity;
+    col = pow(clamp(col, 0.0, 1.0), vec3(0.94));
     gl_FragColor = vec4(col, 1.0);
   }
 `;
