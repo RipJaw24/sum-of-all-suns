@@ -7,6 +7,9 @@
     "resolveJsonModule": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
+    // pixi.js bundles @webgpu/types, which collides with the WebGPU defs in
+    // TS 6's lib.dom — skip d.ts checking of dependencies (ours still checks).
+    "skipLibCheck": true,
     "types": ["vitest/globals"]
   },
   "include": ["src"]

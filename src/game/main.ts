@@ -30,7 +30,8 @@ import {
 import { hazardAt } from './hazards';
 import { Input } from './input';
 import { drawMap } from './map';
-import { Renderer, bodyPosition, gatePosition, type HudPrompt, type HudState } from './renderer';
+import { Renderer } from './renderer';
+import { bodyPosition, gatePosition, type HudPrompt, type HudState } from './view';
 import { marketGoodIds } from './market';
 import {
   CARGO_MAX,
@@ -90,16 +91,22 @@ type Interactable =
   | { kind: 'skim'; body: BodySpec }
   | { kind: 'salvage'; derelict: Derelict };
 
-function fitCanvas(canvas: HTMLCanvasElement): void {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-
 async function boot(): Promise<void> {
-  const canvas = document.getElementById('game') as HTMLCanvasElement;
-  fitCanvas(canvas);
-  window.addEventListener('resize', () => fitCanvas(canvas));
+  // Two canvases (index.html): Pixi world in #game, 2D text overlays in
+  // #overlay above it. All legacy ctx draws (dock/map/site/summary/fade)
+  // target the overlay; renderer.draw() clears it at the start of a frame.
+  const gameCanvas = document.getElementById('game') as HTMLCanvasElement;
+  const canvas = document.getElementById('overlay') as HTMLCanvasElement;
+  const renderer = await Renderer.create(gameCanvas, canvas);
   const ctx = canvas.getContext('2d')!;
+
+  const fitCanvases = (): void => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    renderer.resize(window.innerWidth, window.innerHeight);
+  };
+  fitCanvases();
+  window.addEventListener('resize', fitCanvases);
 
   const cache = new ArticleCache(
     typeof indexedDB !== 'undefined' ? new IdbArticleStore() : new MemoryArticleStore(),
@@ -112,9 +119,8 @@ async function boot(): Promise<void> {
     (startOverride ? null : loadRun()) ?? newRun(startOverride ?? pickStart());
 
   const ship = makeShip();
-  const renderer = new Renderer(ctx);
   const input = new Input();
-  input.attach(canvas);
+  input.attach(gameCanvas);
 
   let spec!: SystemSpec;
   let gates: GateSpec[] = [];
@@ -370,7 +376,15 @@ async function boot(): Promise<void> {
       frameFlying(t, dt);
     }
 
-    if (DEBUG) Object.assign(debugState, { run, mode, t, jumping: transition !== null });
+    if (DEBUG) {
+      Object.assign(debugState, {
+        run,
+        mode,
+        t,
+        jumping: transition !== null,
+        rendererName: renderer.rendererName,
+      });
+    }
     input.endFrame();
     requestAnimationFrame(frame);
   }

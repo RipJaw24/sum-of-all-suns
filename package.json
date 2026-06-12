@@ -20,5 +20,8 @@
     "vitest": "^4.1.8"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "pixi.js": "^8.19.0"
+  }
 }

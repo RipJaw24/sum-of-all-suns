@@ -14,14 +14,22 @@
       }
       canvas {
         display: block;
+        position: fixed;
+        inset: 0;
         width: 100vw;
         height: 100vh;
         cursor: crosshair;
+      }
+      /* 2D text/UI overlays draw above the PixiJS world canvas; input stays
+         on #game (keyboard is window-level anyway). */
+      #overlay {
+        pointer-events: none;
       }
     </style>
   </head>
   <body>
     <canvas id="game"></canvas>
+    <canvas id="overlay"></canvas>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

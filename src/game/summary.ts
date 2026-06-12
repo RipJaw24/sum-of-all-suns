@@ -13,7 +13,7 @@
 
 import { systemName } from '../gen/names';
 import { hash128 } from '../rng';
-import { GATE_COLORS } from './renderer';
+import { GATE_COLORS } from './view';
 import type { RouteEntry, RunState } from './run';
 
 // --- constellation layout -----------------------------------------------------

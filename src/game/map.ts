@@ -6,7 +6,7 @@
  */
 
 import type { GateSpec, SystemSpec } from '../types';
-import { GATE_COLORS, bodyPosition, gatePosition } from './renderer';
+import { GATE_COLORS, bodyPosition, gatePosition } from './view';
 import { jumpCost, type RunState } from './run';
 import type { ShipState } from './ship';
 
