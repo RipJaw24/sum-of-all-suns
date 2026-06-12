@@ -1,21 +1,31 @@
 /**
- * run.test.ts — fuel math (§7), route log, and the §4.2 return-gate rule.
+ * run.test.ts — fuel math (§7), route log, the §4.2 return-gate rule, and
+ * the M2 additions: hull, credits, loot keys, stranding, persistence v2.
  */
 import { describe, expect, it } from 'vitest';
 import { generateSystem } from '../gen/generate';
 import { bioluminescentBay, photosynthesis } from '../gen/fixtures';
-import type { GateSpec } from '../types';
+import type { BodySpec, GateSpec, SystemSpec } from '../types';
+import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
 import {
   BASE_JUMP_FUEL,
   FUEL_MAX,
   RETURN_GATE_ID,
+  addCredits,
+  addFuel,
   applyJump,
   canJump,
+  damageHull,
+  declareAdrift,
   gatesFor,
+  isLooted,
+  isStranded,
   jumpCost,
   loadRun,
+  markLooted,
   newRun,
   saveRun,
+  spendCredits,
 } from './run';
 
 const standard = generateSystem(photosynthesis);
@@ -107,7 +117,142 @@ describe('persistence', () => {
     saveRun(run, storage);
     expect(loadRun(storage)).toEqual(run);
 
-    storage.setItem('sas:run:v1', '{"nope":true}');
+    storage.setItem('sas:run:v2', '{"nope":true}');
     expect(loadRun(storage)).toBeNull();
+  });
+
+  it('discards pre-M2 (v1) saves via the version guard', () => {
+    const storage = fakeStorage();
+    storage.setItem(
+      'sas:run:v2',
+      JSON.stringify({ schemaVersion: 1, currentTitle: 'Photosynthesis', fuel: 50 }),
+    );
+    expect(loadRun(storage)).toBeNull();
+  });
+});
+
+// --- M2: hull, credits, loot (§7) -------------------------------------------
+
+describe('hull & credits (§7)', () => {
+  it('new runs start with full hull and starting credits', () => {
+    const run = newRun('Photosynthesis');
+    expect(run.hull).toBe(HULL_MAX);
+    expect(run.credits).toBe(START_CREDITS);
+    expect(run.status).toBe('active');
+  });
+
+  it('hull damage floors at 0 and kills exactly once', () => {
+    const run = newRun('Photosynthesis');
+    expect(damageHull(run, 30)).toBe(false);
+    expect(run.hull).toBe(HULL_MAX - 30);
+    expect(damageHull(run, 999)).toBe(true);
+    expect(run.hull).toBe(0);
+    expect(run.status).toBe('dead');
+    expect(run.deathCause).toBe('hull');
+    expect(damageHull(run, 10)).toBe(false); // already dead — no double-report
+  });
+
+  it('credits spend only when affordable; fuel clamps at max', () => {
+    const run = newRun('Photosynthesis');
+    expect(spendCredits(run, START_CREDITS + 1)).toBe(false);
+    expect(run.credits).toBe(START_CREDITS);
+    expect(spendCredits(run, 10)).toBe(true);
+    addCredits(run, 5);
+    expect(run.credits).toBe(START_CREDITS - 5);
+    addFuel(run, 9999);
+    expect(run.fuel).toBe(run.fuelMax);
+  });
+
+  it('loot keys are one-time and title-scoped', () => {
+    const run = newRun('Photosynthesis');
+    expect(isLooted(run, 'Volcano', 'body:1')).toBe(false);
+    markLooted(run, 'Volcano', 'body:1');
+    markLooted(run, 'Volcano', 'body:1'); // idempotent
+    expect(isLooted(run, 'Volcano', 'body:1')).toBe(true);
+    expect(isLooted(run, 'Volcano', 'body:2')).toBe(false);
+    expect(run.looted).toEqual(['Volcano/body:1']);
+  });
+});
+
+describe('isStranded (§7 fuel-out death)', () => {
+  const gate = (factor: number): GateSpec => ({
+    id: 'gate:0',
+    destinationTitle: 'X',
+    destinationName: 'X',
+    kind: 'charted',
+    angle: 0,
+    rimRadius: 520,
+    fuelCostFactor: factor,
+  });
+  const body = (over: Partial<BodySpec>): BodySpec => ({
+    id: 'body:0',
+    name: 'B',
+    type: 'rocky',
+    radius: 10,
+    orbitRadius: 100,
+    orbitPeriodSec: 100,
+    initialAngle: 0,
+    hasRings: false,
+    moons: [],
+    site: { goodIds: [], loreSeed: 's' },
+    ...over,
+  });
+  const fakeSpec = (over: Partial<SystemSpec>): SystemSpec =>
+    ({
+      schemaVersion: 1,
+      seed: '00000000000000000000000000000000',
+      sourceTitle: 'Fake',
+      name: 'Fake',
+      kind: 'standard',
+      star: null,
+      bodies: [],
+      gates: [],
+      ambient: { paletteId: 0, nebulaSeed: 'n' },
+      traffic: 0,
+      ...over,
+    }) as SystemSpec;
+
+  function brokeRun(): ReturnType<typeof newRun> {
+    const run = newRun('Photosynthesis');
+    run.fuel = 1; // cheapest gate costs BASE_JUMP_FUEL
+    run.credits = 0;
+    return run;
+  }
+
+  it('not stranded while any gate is affordable', () => {
+    const run = newRun('Photosynthesis');
+    expect(isStranded(run, [gate(1)], fakeSpec({}))).toBe(false);
+  });
+
+  it('stranded when broke with no rescue in-system', () => {
+    expect(isStranded(brokeRun(), [gate(1)], fakeSpec({}))).toBe(true);
+  });
+
+  it('a refuel station rescues only if credits cover the gap', () => {
+    const station = {
+      id: 'station:0',
+      name: 'S',
+      services: ['refuel'] as const,
+      priceLevel: 0.5,
+    };
+    const spec = fakeSpec({ bodies: [body({ station: { ...station, services: ['refuel'] } })] });
+    const run = brokeRun();
+    expect(isStranded(run, [gate(1)], spec)).toBe(true); // 0 cr -> still stuck
+    run.credits = refuelUnitPrice(0.5) * BASE_JUMP_FUEL; // can buy the gap
+    expect(isStranded(run, [gate(1)], spec)).toBe(false);
+  });
+
+  it('a gas giant (skim) always rescues', () => {
+    const spec = fakeSpec({
+      bodies: [body({ type: 'gas_giant', site: { goodIds: [], loreSeed: 's', resource: 'fuel_skim' } })],
+    });
+    expect(isStranded(brokeRun(), [gate(1)], spec)).toBe(false);
+  });
+
+  it('a dead run is never reported stranded', () => {
+    const run = brokeRun();
+    declareAdrift(run);
+    expect(run.deathCause).toBe('adrift');
+    expect(isStranded(run, [gate(1)], fakeSpec({}))).toBe(false);
   });
 });

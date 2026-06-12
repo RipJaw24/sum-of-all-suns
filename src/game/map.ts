@@ -119,7 +119,8 @@ export function drawMap(
   ctx.font = '12px monospace';
   ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
   ctx.fillText(
-    `fuel ${Math.round(run.fuel)}/${run.fuelMax} · jumps ${run.route.length - 1} · [TAB] close`,
+    `fuel ${Math.round(run.fuel)}/${run.fuelMax} · hull ${Math.round(run.hull)}/${run.hullMax}` +
+      ` · ${run.credits} cr · jumps ${run.route.length - 1} · [TAB] close`,
     16,
     46,
   );

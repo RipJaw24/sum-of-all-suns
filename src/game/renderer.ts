@@ -6,6 +6,7 @@
 
 import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, SystemSpec } from '../types';
+import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
 
 const BODY_COLORS: Record<BodySpec['type'], string> = {
@@ -22,17 +23,29 @@ export const GATE_COLORS: Record<GateSpec['kind'], string> = {
   wormhole: '#c98fff',
 };
 
+/** Bottom-center interact prompt; main.ts decides text per interactable. */
+export interface HudPrompt {
+  text: string;
+  tone: 'ok' | 'warn';
+}
+
 /** Everything the HUD shows. Assembled by main.ts each frame. */
 export interface HudState {
   fuel: number;
   fuelMax: number;
+  hull: number;
+  hullMax: number;
+  credits: number;
   jumps: number;
-  promptGate: GateSpec | null;
-  /** Fuel cost of promptGate's jump. */
-  promptCost: number;
-  canAfford: boolean;
+  prompt: HudPrompt | null;
   /** e.g. degraded-telemetry warning. */
   notice?: string;
+  /** Active hazard warning, e.g. 'ASTEROID IMPACTS'. */
+  hazardLabel?: string;
+  /** §7 stranded state: fuel-out with no rescue in-system. */
+  adrift?: boolean;
+  /** 0..1 recent-damage intensity; drives the red vignette. */
+  damageFlash?: number;
 }
 
 interface StarfieldDot {
@@ -71,8 +84,16 @@ export class Renderer {
     }));
   }
 
-  /** `gates` is the active list (spec gates + any §4.2 injected return gate). */
-  draw(spec: SystemSpec, gates: readonly GateSpec[], ship: ShipState, t: number, hud: HudState): void {
+  /** `gates` is the active list (spec gates + any §4.2 injected return gate);
+   *  `derelicts` is the unlooted remainder (salvage.ts, filtered by main.ts). */
+  draw(
+    spec: SystemSpec,
+    gates: readonly GateSpec[],
+    ship: ShipState,
+    t: number,
+    hud: HudState,
+    derelicts: readonly Derelict[] = [],
+  ): void {
     const { ctx } = this;
     const { width, height } = ctx.canvas;
     ctx.fillStyle = '#04050a';
@@ -86,10 +107,12 @@ export class Renderer {
     this.drawOrbitsAndBelt(ctx, spec);
     if (spec.star) this.drawStar(ctx, spec, t);
     for (const body of spec.bodies) this.drawBody(ctx, body, t);
+    for (const derelict of derelicts) this.drawDerelict(ctx, derelict);
     for (const gate of gates) this.drawGate(ctx, gate, t);
     this.drawShip(ctx, ship);
     ctx.restore();
 
+    if (hud.damageFlash && hud.damageFlash > 0) this.drawDamageVignette(ctx, hud.damageFlash);
     this.drawHud(ctx, spec, hud);
   }
 
@@ -222,6 +245,43 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
+  private drawDerelict(ctx: CanvasRenderingContext2D, d: Derelict): void {
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    // Wreck: broken hull silhouette, dim.
+    ctx.rotate((hash128(d.id)[0] / 0x1_0000_0000) * Math.PI * 2);
+    ctx.strokeStyle = 'rgba(170, 175, 190, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-7, 6);
+    ctx.moveTo(-3, 1);
+    ctx.lineTo(-7, -6);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.restore();
+    ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('derelict', d.x, d.y + 20);
+  }
+
+  private drawDamageVignette(ctx: CanvasRenderingContext2D, intensity: number): void {
+    const { width, height } = ctx.canvas;
+    const g = ctx.createRadialGradient(
+      width / 2,
+      height / 2,
+      Math.min(width, height) * 0.35,
+      width / 2,
+      height / 2,
+      Math.max(width, height) * 0.7,
+    );
+    g.addColorStop(0, 'rgba(255, 60, 30, 0)');
+    g.addColorStop(1, `rgba(255, 60, 30, ${0.45 * Math.min(1, intensity)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, width, height);
+  }
+
   private drawShip(ctx: CanvasRenderingContext2D, ship: ShipState): void {
     ctx.save();
     ctx.translate(ship.x, ship.y);
@@ -246,40 +306,45 @@ export class Renderer {
     ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
     ctx.fillText(`${spec.kind} system · jumps ${hud.jumps} · [TAB] chart`, 16, 46);
 
-    // Fuel bar (§7: fuel is the run clock).
-    const frac = Math.max(0, hud.fuel / hud.fuelMax);
-    ctx.fillStyle = 'rgba(205, 214, 244, 0.25)';
-    ctx.fillRect(16, 56, 140, 8);
-    ctx.fillStyle = frac < 0.25 ? '#ff6b4a' : '#7fd4ff';
-    ctx.fillRect(16, 56, 140 * frac, 8);
+    const bar = (y: number, frac: number, color: string, label: string) => {
+      ctx.fillStyle = 'rgba(205, 214, 244, 0.25)';
+      ctx.fillRect(16, y, 140, 8);
+      ctx.fillStyle = frac < 0.25 ? '#ff6b4a' : color;
+      ctx.fillRect(16, y, 140 * Math.max(0, frac), 8);
+      ctx.fillStyle = 'rgba(205, 214, 244, 0.8)';
+      ctx.fillText(label, 164, y + 8);
+    };
+    // Fuel is the run clock; hull is the other way to die (§7).
+    bar(56, hud.fuel / hud.fuelMax, '#7fd4ff', `FUEL ${Math.round(hud.fuel)}/${hud.fuelMax}`);
+    bar(72, hud.hull / hud.hullMax, '#9ee887', `HULL ${Math.round(hud.hull)}/${hud.hullMax}`);
     ctx.fillStyle = 'rgba(205, 214, 244, 0.8)';
-    ctx.fillText(`FUEL ${Math.round(hud.fuel)}/${hud.fuelMax}`, 164, 64);
+    ctx.fillText(`${hud.credits} cr`, 16, 100);
 
+    let noticeY = 120;
+    if (hud.hazardLabel) {
+      ctx.fillStyle = '#ff6b4a';
+      ctx.fillText(`⚠ ${hud.hazardLabel}`, 16, noticeY);
+      noticeY += 18;
+    }
     if (hud.notice) {
       ctx.fillStyle = '#ffb35e';
-      ctx.fillText(hud.notice, 16, 84);
+      ctx.fillText(hud.notice, 16, noticeY);
     }
 
-    if (hud.promptGate) {
+    if (hud.adrift) {
+      ctx.textAlign = 'center';
+      ctx.font = '16px monospace';
+      ctx.fillStyle = '#ff6b4a';
+      ctx.fillText('SHIP ADRIFT — FUEL EXHAUSTED, NO RESCUE IN SYSTEM', ctx.canvas.width / 2, 96);
+      ctx.font = '13px monospace';
+      ctx.fillText('[X] END RUN', ctx.canvas.width / 2, 118);
+    }
+
+    if (hud.prompt) {
       ctx.textAlign = 'center';
       ctx.font = '14px monospace';
-      const gate = hud.promptGate;
-      const label = gate.kind === 'uncharted' ? 'uncharted signal' : gate.destinationName;
-      if (hud.canAfford) {
-        ctx.fillStyle = '#7fd4ff';
-        ctx.fillText(
-          `[E] Enter See-Also Gate — ${label} (${hud.promptCost} fuel)`,
-          ctx.canvas.width / 2,
-          ctx.canvas.height - 40,
-        );
-      } else {
-        ctx.fillStyle = '#ff6b4a';
-        ctx.fillText(
-          `INSUFFICIENT FUEL — ${label} needs ${hud.promptCost}`,
-          ctx.canvas.width / 2,
-          ctx.canvas.height - 40,
-        );
-      }
+      ctx.fillStyle = hud.prompt.tone === 'ok' ? '#7fd4ff' : '#ff6b4a';
+      ctx.fillText(hud.prompt.text, ctx.canvas.width / 2, ctx.canvas.height - 40);
     }
   }
 }

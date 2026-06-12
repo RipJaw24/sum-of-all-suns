@@ -1,14 +1,16 @@
 /**
  * run.ts — mutable roguelike run state, kept strictly OUT of SystemSpec
  * (types.ts invariant: world data is immutable; run state lives here, keyed
- * by titles/ids). M1 scope: fuel as the run clock (§7) and the route log —
- * which is already the Decrypt Flight Log's data (M2 builds the UI on it).
- * Hull, credits, and death handling are M2.
+ * by titles/ids). M2 scope (§7): fuel as the run clock, hull, credits,
+ * one-time loot tracking, and death — by hull breach or stranding. The
+ * route log doubles as the Decrypt Flight Log's data (summary.ts).
  */
 
 import { systemName } from '../gen/names';
 import { hash128, normalizeTitle } from '../rng';
 import type { GateKind, GateSpec, SystemSpec } from '../types';
+import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
+import { derelictsFor } from './salvage';
 
 export const FUEL_MAX = 100;
 export const BASE_JUMP_FUEL = 8;
@@ -21,26 +23,123 @@ export interface RouteEntry {
   via: 'start' | GateKind;
 }
 
+export type DeathCause = 'hull' | 'adrift';
+
 export interface RunState {
-  schemaVersion: 1;
+  schemaVersion: 2;
   /** Article title of the system the player is in. SPOILER. */
   currentTitle: string;
   /** Where we jumped here from; drives the §4.2 return gate. */
   previousTitle?: string;
   fuel: number;
   fuelMax: number;
+  hull: number;
+  hullMax: number;
+  credits: number;
+  /** One-time pickup/event keys ("<title>/<id>"): mined bodies, emptied
+   *  derelicts, hazard-pocket entry hits. See lootKey(). */
+  looted: string[];
+  status: 'active' | 'dead';
+  deathCause?: DeathCause;
   route: RouteEntry[];
 }
 
 export function newRun(startTitle: string): RunState {
   const title = normalizeTitle(startTitle);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     currentTitle: title,
     fuel: FUEL_MAX,
     fuelMax: FUEL_MAX,
+    hull: HULL_MAX,
+    hullMax: HULL_MAX,
+    credits: START_CREDITS,
+    looted: [],
+    status: 'active',
     route: [{ title, via: 'start' }],
   };
+}
+
+// --- §7 resources: hull, credits, fuel, loot -------------------------------
+
+/** Apply hull damage. Returns true when this hit ends the run. */
+export function damageHull(run: RunState, amount: number): boolean {
+  if (run.status === 'dead') return false;
+  run.hull = Math.max(0, run.hull - amount);
+  if (run.hull <= 0) {
+    run.status = 'dead';
+    run.deathCause = 'hull';
+    return true;
+  }
+  return false;
+}
+
+export function repairHull(run: RunState, amount: number): void {
+  run.hull = Math.min(run.hullMax, run.hull + amount);
+}
+
+export function addFuel(run: RunState, amount: number): void {
+  run.fuel = Math.min(run.fuelMax, run.fuel + amount);
+}
+
+export function addCredits(run: RunState, amount: number): void {
+  run.credits += amount;
+}
+
+/** Deduct if affordable; returns false (and changes nothing) otherwise. */
+export function spendCredits(run: RunState, amount: number): boolean {
+  if (run.credits < amount) return false;
+  run.credits -= amount;
+  return true;
+}
+
+/** Declare the run lost to stranding (player-acknowledged, see isStranded). */
+export function declareAdrift(run: RunState): void {
+  run.status = 'dead';
+  run.deathCause = 'adrift';
+}
+
+export function lootKey(title: string, id: string): string {
+  return `${normalizeTitle(title)}/${id}`;
+}
+
+export function isLooted(run: RunState, title: string, id: string): boolean {
+  return run.looted.includes(lootKey(title, id));
+}
+
+export function markLooted(run: RunState, title: string, id: string): void {
+  if (!isLooted(run, title, id)) run.looted.push(lootKey(title, id));
+}
+
+/**
+ * Stranded = the run is unwinnable on fuel (§7 "death: fuel-out"): every
+ * gate is unaffordable even after converting all credits to station fuel,
+ * and there's no gas giant to skim and no unlooted derelict fuel. The game
+ * surfaces this as an "ADRIFT — END RUN" prompt rather than killing
+ * silently, so the player understands why the run ended.
+ */
+export function isStranded(run: RunState, gates: readonly GateSpec[], spec: SystemSpec): boolean {
+  if (run.status === 'dead') return false;
+  if (gates.length === 0) return true;
+  const cheapest = Math.min(...gates.map(jumpCost));
+  if (run.fuel >= cheapest) return false;
+
+  // Station fuel, limited by what the player can pay for.
+  const station = spec.bodies.find((b) => b.station?.services.includes('refuel'))?.station;
+  if (station) {
+    const buyable = Math.floor(run.credits / refuelUnitPrice(station.priceLevel));
+    if (run.fuel + buyable >= cheapest) return false;
+  }
+  // Gas giants can always be skimmed (slow and hull-hazardous — that risk is
+  // the player's to take; running out of hull is its own death).
+  if (spec.bodies.some((b) => b.site.resource === 'fuel_skim')) return false;
+  // Unlooted derelict fuel in salvage fields.
+  const derelictFuel = derelictsFor(spec)
+    .filter((d) => !isLooted(run, spec.sourceTitle, d.id))
+    .reduce((sum, d) => sum + d.fuel, 0);
+  if (run.fuel + derelictFuel >= cheapest) return false;
+
+  return true;
 }
 
 export function jumpCost(gate: Pick<GateSpec, 'fuelCostFactor'>): number {
@@ -110,7 +209,9 @@ export function gatesFor(spec: SystemSpec, arrivedFrom: string | undefined): Gat
 
 // --- persistence ----------------------------------------------------------------
 
-const RUN_KEY = 'sas:run:v1';
+// v2: M2 added hull/credits/looted/status. v1 saves are discarded (prototype
+// phase, no migration) — the version guard in loadRun returns null for them.
+const RUN_KEY = 'sas:run:v2';
 
 export function saveRun(run: RunState, storage: Storage = localStorage): void {
   storage.setItem(RUN_KEY, JSON.stringify(run));
@@ -121,7 +222,7 @@ export function loadRun(storage: Storage = localStorage): RunState | null {
     const raw = storage.getItem(RUN_KEY);
     if (!raw) return null;
     const run = JSON.parse(raw);
-    return run?.schemaVersion === 1 && typeof run.currentTitle === 'string'
+    return run?.schemaVersion === 2 && typeof run.currentTitle === 'string'
       ? (run as RunState)
       : null;
   } catch {
