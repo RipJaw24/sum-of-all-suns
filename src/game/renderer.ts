@@ -13,6 +13,7 @@
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, StarSpec, SystemSpec } from '../types';
+import { NebulaLayer } from './nebula';
 import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
 import { BODY_COLORS, GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
@@ -51,8 +52,9 @@ interface GateNode {
 }
 
 export class Renderer {
-  /** Phase 5 nebula shader mounts here, behind the world. */
-  readonly nebulaLayer = new Container();
+  /** §3.4 nebula shader, behind the world. */
+  private readonly nebula = new NebulaLayer();
+  private readonly nebulaLayer = new Container();
   private readonly world = new Container();
   private readonly starfield = new Graphics();
   private readonly orbits = new Graphics();
@@ -81,6 +83,7 @@ export class Renderer {
       this.gateLayer,
       this.ship,
     );
+    this.nebulaLayer.addChild(this.nebula.mesh);
     app.stage.addChild(this.nebulaLayer, this.world);
 
     this.ship
@@ -116,6 +119,7 @@ export class Renderer {
 
   /** (Re)build the scene graph for a system. */
   setSystem(spec: SystemSpec): void {
+    this.nebula.setSystem(spec);
     this.buildStarfield(spec);
     this.buildOrbitsAndBelt(spec);
     this.buildStar(spec);
@@ -148,6 +152,7 @@ export class Renderer {
     this.syncDerelicts(derelicts);
 
     this.world.position.set(width / 2 - ship.x, height / 2 - ship.y);
+    this.nebula.frame(ship.x, ship.y, width, height);
 
     // Pulsar strobe (§3.1 rare stars).
     if (this.starClass === 'pulsar') {
