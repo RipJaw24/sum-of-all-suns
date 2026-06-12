@@ -201,7 +201,7 @@ Raw Canvas2D is acceptable for M0; adopt PixiJS when nebula shaders and particle
 
 **M3 — Texture:** trade goods, lore fragments, anomaly systems (disambig/redirect/uncharted rules), nebula backgrounds per palette, audio. First combat pass (pirates in high-traffic systems) if M2 lands early.
 
-**M4 — Shell, goal & ship (rebuilt 2026-06):** main menu + pause shell (title screen with New Run / Continue / Controls; Esc pause with Abandon Run); run goal — survive N jumps, with a victory variant of the Decrypt Flight Log; minimal synthesized Web Audio SFX (deferred from M3; no asset files); fail-early no-network UX on new-run start (**offline article pack: cut** — snapshot cache + degraded fallback already cover mid-run failures; a fresh run with no API access should error clearly, not silently degrade); secret-keeping playtest ("can anyone tell it's Wikipedia?"); balance fuel economy / trade / salvage / hazards; production build + acceptance script, ship it.
+**M4 — Shell, goal & ship (rebuilt 2026-06):** main menu + pause shell (title screen with New Run / Continue / Controls; Esc pause with Abandon Run); run goal — survive N jumps, with a victory variant of the Decrypt Flight Log; minimal synthesized Web Audio SFX (deferred from M3; no asset files) plus a sourced menu-music track (MP3/OGG static asset; starts on first user gesture per browser autoplay policy); fail-early no-network UX on new-run start (**offline article pack: cut** — snapshot cache + degraded fallback already cover mid-run failures; a fresh run with no API access should error clearly, not silently degrade); secret-keeping playtest ("can anyone tell it's Wikipedia?"); balance fuel economy / trade / salvage / hazards; production build + acceptance script, ship it.
 
 ---
 
