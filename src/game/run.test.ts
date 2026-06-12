@@ -7,14 +7,19 @@ import { generateSystem } from '../gen/generate';
 import { bioluminescentBay, photosynthesis } from '../gen/fixtures';
 import type { BodySpec, GateSpec, SystemSpec } from '../types';
 import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
+import { GOODS } from '../gen/goods';
+import { priceFor } from './market';
 import {
   BASE_JUMP_FUEL,
+  CARGO_MAX,
   FUEL_MAX,
   RETURN_GATE_ID,
+  addCargo,
   addCredits,
   addFuel,
   applyJump,
   canJump,
+  cargoCount,
   damageHull,
   declareAdrift,
   gatesFor,
@@ -24,6 +29,7 @@ import {
   loadRun,
   markLooted,
   newRun,
+  removeCargo,
   saveRun,
   spendCredits,
 } from './run';
@@ -117,8 +123,26 @@ describe('persistence', () => {
     saveRun(run, storage);
     expect(loadRun(storage)).toEqual(run);
 
-    storage.setItem('sas:run:v2', '{"nope":true}');
+    storage.setItem('sas:run:v3', '{"nope":true}');
     expect(loadRun(storage)).toBeNull();
+
+    const old = fakeStorage();
+    old.setItem('sas:run:v2', '{"nope":true}');
+    expect(loadRun(old)).toBeNull(); // garbage in the legacy key, too
+  });
+
+  it('migrates a v2 save in place: cargo added, old key removed', () => {
+    const storage = fakeStorage();
+    const v2 = { ...newRun('Photosynthesis'), schemaVersion: 2 } as Record<string, unknown>;
+    delete v2.cargo;
+    storage.setItem('sas:run:v2', JSON.stringify(v2));
+
+    const migrated = loadRun(storage)!;
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.cargo).toEqual({});
+    expect(migrated.currentTitle).toBe('Photosynthesis');
+    expect(storage.getItem('sas:run:v2')).toBeNull();
+    expect(loadRun(storage)).toEqual(migrated); // resaved under the v3 key
   });
 
   it('discards pre-M2 (v1) saves via the version guard', () => {
@@ -161,6 +185,20 @@ describe('hull & credits (§7)', () => {
     expect(run.credits).toBe(START_CREDITS - 5);
     addFuel(run, 9999);
     expect(run.fuel).toBe(run.fuelMax);
+  });
+
+  it('cargo helpers cap at CARGO_MAX and remove only what is held', () => {
+    const run = newRun('Photosynthesis');
+    expect(cargoCount(run)).toBe(0);
+    expect(addCargo(run, 'water-ice', 4)).toBe(4);
+    expect(addCargo(run, 'strange-ore', CARGO_MAX)).toBe(CARGO_MAX - 4); // capped
+    expect(cargoCount(run)).toBe(CARGO_MAX);
+    expect(addCargo(run, 'water-ice', 1)).toBe(0);
+
+    expect(removeCargo(run, 'water-ice', 5)).toBe(false); // only 4 held
+    expect(removeCargo(run, 'water-ice', 4)).toBe(true);
+    expect(run.cargo['water-ice']).toBeUndefined(); // emptied keys are deleted
+    expect(cargoCount(run)).toBe(CARGO_MAX - 4);
   });
 
   it('loot keys are one-time and title-scoped', () => {
@@ -239,6 +277,23 @@ describe('isStranded (§7 fuel-out death)', () => {
     const run = brokeRun();
     expect(isStranded(run, [gate(1)], spec)).toBe(true); // 0 cr -> still stuck
     run.credits = refuelUnitPrice(0.5) * BASE_JUMP_FUEL; // can buy the gap
+    expect(isStranded(run, [gate(1)], spec)).toBe(false);
+  });
+
+  it('sellable cargo counts toward station fuel at a trading station (M3)', () => {
+    const station = {
+      id: 'station:0',
+      name: 'S',
+      services: ['refuel', 'trade'] as const,
+      priceLevel: 0,
+    };
+    const spec = fakeSpec({ bodies: [body({ station })] });
+    const run = brokeRun();
+    expect(isStranded(run, [gate(1)], spec)).toBe(true);
+    // A hold full of the priciest good liquidates past any fuel gap.
+    const rare = GOODS.find((g) => g.tier === 'rare')!;
+    addCargo(run, rare.id, CARGO_MAX);
+    expect(priceFor(spec, rare.id) * CARGO_MAX).toBeGreaterThan(BASE_JUMP_FUEL * 3);
     expect(isStranded(run, [gate(1)], spec)).toBe(false);
   });
 

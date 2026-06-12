@@ -17,8 +17,10 @@
  */
 
 /** Bump when generation rules change incompatibly. Mixed into all seeds.
- *  v2: M1 — rank-based gate fuel factors (gateFuelFactor). */
-export const GEN_VERSION = 'v2';
+ *  v2: M1 — rank-based gate fuel factors (gateFuelFactor).
+ *  v3: M3 — anomaly systems for stub articles (§4.5), trade goodIds on
+ *      bodies. */
+export const GEN_VERSION = 'v3';
 
 /**
  * Internal seed salt. FROZEN FOREVER — deliberately decoupled from the

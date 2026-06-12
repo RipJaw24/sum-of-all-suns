@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "seed": "efd84ffe9185d78655e6d69d2bbb4ee5",
+  "seed": "028728afd9d75f3c30f637a9eba6403a",
   "sourceTitle": "Photosynthesis",
   "name": "Moash Nizith",
   "kind": "standard",
   "star": {
-    "class": "supergiant",
-    "radius": 80.987,
-    "color": "#ffae6b",
+    "class": "binary",
+    "radius": 53.287,
+    "color": "#ffd9a0",
     "hazardRadius": 0
   },
   "bodies": [
@@ -16,38 +16,53 @@
       "name": "Moash Nizith I",
       "type": "ice",
       "radius": 18.774,
-      "orbitRadius": 149.045,
-      "orbitPeriodSec": 268.394,
-      "initialAngle": 0.077,
-      "hasRings": false,
-      "moons": [
-        {
-          "id": "moon:0:0",
-          "name": "Moash Nizith Ia",
-          "radius": 4.234,
-          "orbitRadius": 51.174,
-          "orbitPeriodSec": 42.232,
-          "initialAngle": 4.561
-        }
-      ],
+      "orbitRadius": 151.93,
+      "orbitPeriodSec": 315.507,
+      "initialAngle": 0.357,
+      "hasRings": true,
+      "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "70b5c7c9e05419221857a50388b67be8"
+        "goodIds": [
+          "silicate-dust"
+        ],
+        "loreSeed": "ddb308c4710acfc0faa259ec561b9ee8"
       }
     },
     {
       "id": "body:1",
       "name": "Moash Nizith II",
-      "type": "ocean",
+      "type": "ice",
       "radius": 16.209,
-      "orbitRadius": 232.636,
-      "orbitPeriodSec": 523.006,
-      "initialAngle": 1.981,
-      "hasRings": true,
-      "moons": [],
+      "orbitRadius": 253.365,
+      "orbitPeriodSec": 484.316,
+      "initialAngle": 1.463,
+      "hasRings": false,
+      "moons": [
+        {
+          "id": "moon:1:0",
+          "name": "Moash Nizith IIa",
+          "radius": 3.018,
+          "orbitRadius": 46.708,
+          "orbitPeriodSec": 43.785,
+          "initialAngle": 4.959
+        }
+      ],
       "site": {
-        "goodIds": [],
-        "loreSeed": "267f5bcf0a1e305af958a2c0d539c955"
+        "goodIds": [
+          "silicate-dust",
+          "vat-proteins"
+        ],
+        "loreSeed": "f7dd24ab8fe4999c2fce0e4b57f7b37c"
+      },
+      "station": {
+        "id": "station:0",
+        "name": "Spire Moakra",
+        "services": [
+          "refuel",
+          "repair",
+          "trade"
+        ],
+        "priceLevel": 0.81
       }
     },
     {
@@ -55,80 +70,78 @@
       "name": "Moash Nizith III",
       "type": "gas_giant",
       "radius": 43.657,
-      "orbitRadius": 337.921,
-      "orbitPeriodSec": 565.194,
-      "initialAngle": 5.959,
-      "hasRings": false,
-      "moons": [
-        {
-          "id": "moon:2:0",
-          "name": "Moash Nizith IIIa",
-          "radius": 12.793,
-          "orbitRadius": 150.971,
-          "orbitPeriodSec": 23.863,
-          "initialAngle": 3.177
-        }
-      ],
+      "orbitRadius": 348.991,
+      "orbitPeriodSec": 586.098,
+      "initialAngle": 3.891,
+      "hasRings": true,
+      "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "2b8b2328e2d9e8c250fa056f99a8ce85",
+        "goodIds": [
+          "water-ice"
+        ],
+        "loreSeed": "f291dd9ab6389e643591f06f7138b391",
         "resource": "fuel_skim"
       }
     },
     {
       "id": "body:3",
       "name": "Moash Nizith IV",
-      "type": "ice",
+      "type": "lava",
       "radius": 20.075,
-      "orbitRadius": 425.551,
-      "orbitPeriodSec": 765.442,
-      "initialAngle": 1.938,
-      "hasRings": false,
-      "moons": [
-        {
-          "id": "moon:3:0",
-          "name": "Moash Nizith IVa",
-          "radius": 4.017,
-          "orbitRadius": 51.555,
-          "orbitPeriodSec": 24.064,
-          "initialAngle": 4.679
-        }
-      ],
+      "orbitRadius": 433.04,
+      "orbitPeriodSec": 854.926,
+      "initialAngle": 5.88,
+      "hasRings": true,
+      "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "a99b2e369b473f6af79ebc71c542ad2d"
+        "goodIds": [
+          "water-ice"
+        ],
+        "loreSeed": "76b0157edfbe3cf75c6bbbeaf5659263",
+        "resource": "mining"
       }
     },
     {
       "id": "body:4",
       "name": "Moash Nizith V",
-      "type": "rocky",
+      "type": "ice",
       "radius": 10.602,
-      "orbitRadius": 535.906,
-      "orbitPeriodSec": 1152.884,
-      "initialAngle": 5.375,
+      "orbitRadius": 520.262,
+      "orbitPeriodSec": 1169.788,
+      "initialAngle": 5.569,
       "hasRings": false,
       "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "c26efedca3d452dbb014efb1d1ae43b6",
-        "resource": "mining"
+        "goodIds": [
+          "archive-crystals"
+        ],
+        "loreSeed": "f6621d3cfea95f11d8a62f43d06d6d6e"
       }
     },
     {
       "id": "body:5",
       "name": "Moash Nizith VI",
-      "type": "rocky",
+      "type": "ice",
       "radius": 17.265,
-      "orbitRadius": 633.14,
-      "orbitPeriodSec": 1513.69,
-      "initialAngle": 4.439,
-      "hasRings": true,
-      "moons": [],
+      "orbitRadius": 610.412,
+      "orbitPeriodSec": 1241.591,
+      "initialAngle": 0.064,
+      "hasRings": false,
+      "moons": [
+        {
+          "id": "moon:5:0",
+          "name": "Moash Nizith VIa",
+          "radius": 4.111,
+          "orbitRadius": 58.225,
+          "orbitPeriodSec": 37.03,
+          "initialAngle": 4.826
+        }
+      ],
       "site": {
-        "goodIds": [],
-        "loreSeed": "4f701ede1733814b7c3b79332478e6a6",
-        "resource": "mining"
+        "goodIds": [
+          "ferrite-slag"
+        ],
+        "loreSeed": "029ee893ecfa3eed703e5b3d9e5a8d43"
       }
     },
     {
@@ -136,14 +149,16 @@
       "name": "Moash Nizith VII",
       "type": "rocky",
       "radius": 15.837,
-      "orbitRadius": 730.089,
-      "orbitPeriodSec": 1461.014,
-      "initialAngle": 5.473,
+      "orbitRadius": 719.468,
+      "orbitPeriodSec": 1283.533,
+      "initialAngle": 2.097,
       "hasRings": true,
       "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "fbd3487b95da5c5483f3e73eedfaf311",
+        "goodIds": [
+          "ration-paste"
+        ],
+        "loreSeed": "e642439979fc275d9636a31a0988c7de",
         "resource": "mining"
       }
     },
@@ -152,14 +167,16 @@
       "name": "Moash Nizith VIII",
       "type": "gas_giant",
       "radius": 44,
-      "orbitRadius": 810.222,
-      "orbitPeriodSec": 1660.057,
-      "initialAngle": 5.812,
+      "orbitRadius": 799.992,
+      "orbitPeriodSec": 1338.837,
+      "initialAngle": 2.259,
       "hasRings": true,
       "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "92daf4aeb874d6aa2fa3ef48050dcd4c",
+        "goodIds": [
+          "silicate-dust"
+        ],
+        "loreSeed": "734390be87f48ba8b7de630c4369781a",
         "resource": "fuel_skim"
       }
     },
@@ -168,25 +185,17 @@
       "name": "Moash Nizith IX",
       "type": "lava",
       "radius": 14.189,
-      "orbitRadius": 910.391,
-      "orbitPeriodSec": 1766.401,
-      "initialAngle": 2.662,
+      "orbitRadius": 902.167,
+      "orbitPeriodSec": 1840.968,
+      "initialAngle": 5.774,
       "hasRings": false,
       "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "089fdca406673db13b4ea98835b6489d",
-        "resource": "mining"
-      },
-      "station": {
-        "id": "station:0",
-        "name": "Bastion Proathaem",
-        "services": [
-          "refuel",
-          "repair",
-          "trade"
+        "goodIds": [
+          "polymer-stock"
         ],
-        "priceLevel": 0.826
+        "loreSeed": "9565d4ec60bd69374492e1d1b14a5c0a",
+        "resource": "mining"
       }
     }
   ],
@@ -196,8 +205,8 @@
       "destinationTitle": "Oxygen",
       "destinationName": "Lastros",
       "kind": "charted",
-      "angle": 3.127,
-      "rimRadius": 1210.765,
+      "angle": 3.58,
+      "rimRadius": 1178.801,
       "fuelCostFactor": 1
     },
     {
@@ -205,8 +214,8 @@
       "destinationTitle": "Carbon dioxide",
       "destinationName": "Strugym Mi Reach",
       "kind": "charted",
-      "angle": 4.561,
-      "rimRadius": 1210.765,
+      "angle": 5.04,
+      "rimRadius": 1178.801,
       "fuelCostFactor": 1.15
     },
     {
@@ -214,8 +223,8 @@
       "destinationTitle": "Chlorophyll",
       "destinationName": "Daustren Nath",
       "kind": "charted",
-      "angle": 0.091,
-      "rimRadius": 1210.765,
+      "angle": 0.46,
+      "rimRadius": 1178.801,
       "fuelCostFactor": 1.3
     },
     {
@@ -223,19 +232,19 @@
       "destinationTitle": "Cyanobacteria",
       "destinationName": "Sytourk Bauhaex Minor",
       "kind": "charted",
-      "angle": 1.762,
-      "rimRadius": 1210.765,
+      "angle": 2.103,
+      "rimRadius": 1178.801,
       "fuelCostFactor": 1.45
     }
   ],
   "belt": {
-    "innerRadius": 996.914,
-    "outerRadius": 1050.765,
+    "innerRadius": 963.118,
+    "outerRadius": 1018.801,
     "density": 0.338
   },
   "ambient": {
     "paletteId": 3,
-    "nebulaSeed": "c256f19903e1aa901f92f9e1de25a2e8"
+    "nebulaSeed": "9e2ce5a8d6ea129398694346d0afb47d"
   },
   "traffic": 0.837
 }

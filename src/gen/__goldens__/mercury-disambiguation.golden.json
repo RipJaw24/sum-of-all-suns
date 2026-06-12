@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "seed": "594c37cc793e009c1b7caec33b0e9993",
+  "seed": "93aa7778820a5a88cb8fabe5da2f8615",
   "sourceTitle": "Mercury",
   "name": "Hasenom",
   "kind": "shattered",
@@ -12,7 +12,7 @@
       "destinationTitle": "Mercury (planet)",
       "destinationName": "Naetyprirk",
       "kind": "charted",
-      "angle": 2.012,
+      "angle": 1.5,
       "rimRadius": 520,
       "fuelCostFactor": 1
     },
@@ -21,7 +21,7 @@
       "destinationTitle": "Mercury (element)",
       "destinationName": "Velaethni",
       "kind": "charted",
-      "angle": 2.626,
+      "angle": 2.357,
       "rimRadius": 520,
       "fuelCostFactor": 1.15
     },
@@ -30,7 +30,7 @@
       "destinationTitle": "Mercury (mythology)",
       "destinationName": "Nylekeirk",
       "kind": "charted",
-      "angle": 3.556,
+      "angle": 3.141,
       "rimRadius": 520,
       "fuelCostFactor": 1.3
     },
@@ -39,7 +39,7 @@
       "destinationTitle": "Freddie Mercury",
       "destinationName": "Thoumatman",
       "kind": "charted",
-      "angle": 4.257,
+      "angle": 3.946,
       "rimRadius": 520,
       "fuelCostFactor": 1.45
     },
@@ -48,7 +48,7 @@
       "destinationTitle": "Mercury Records",
       "destinationName": "Shaush Gistrer Major",
       "kind": "charted",
-      "angle": 4.977,
+      "angle": 4.707,
       "rimRadius": 520,
       "fuelCostFactor": 1.6
     },
@@ -57,7 +57,7 @@
       "destinationTitle": "Project Mercury",
       "destinationName": "Haerk Baux",
       "kind": "charted",
-      "angle": 5.799,
+      "angle": 5.595,
       "rimRadius": 520,
       "fuelCostFactor": 1.75
     },
@@ -66,7 +66,7 @@
       "destinationTitle": "Mercury, Nevada",
       "destinationName": "Veith Baun Reach",
       "kind": "uncharted",
-      "angle": 0.294,
+      "angle": 6.232,
       "rimRadius": 520,
       "fuelCostFactor": 0.95,
       "unchartedOutcome": "sparse"
@@ -76,20 +76,20 @@
       "destinationTitle": "Mercury (programming language)",
       "destinationName": "Lausneir Mouth Major",
       "kind": "uncharted",
-      "angle": 1.163,
+      "angle": 0.781,
       "rimRadius": 520,
       "fuelCostFactor": 1.025,
       "unchartedOutcome": "sparse"
     }
   ],
   "belt": {
-    "innerRadius": 77.395,
-    "outerRadius": 385.739,
-    "density": 0.696
+    "innerRadius": 91.364,
+    "outerRadius": 409.379,
+    "density": 0.83
   },
   "ambient": {
     "paletteId": 5,
-    "nebulaSeed": "0c295cfb2b44ebf940460934672bbe36",
+    "nebulaSeed": "e63fe5e2385b8a5670b24cdcaed62368",
     "hazard": "debris"
   },
   "traffic": 0.739

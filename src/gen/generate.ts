@@ -12,6 +12,7 @@
  */
 
 import { Rng, hash128, normalizeTitle, rngForArticle, seedToHex, systemSeed } from '../rng';
+import { goodsForSectionTitle } from './goods';
 import { bodyName, moonName, stationName, systemName } from './names';
 import {
   type ArticleMetadata,
@@ -151,7 +152,9 @@ function generateBodies(meta: ArticleMetadata, root: Rng, displayName: string): 
       hasRings,
       moons,
       site: {
-        goodIds: [], // trade goods are M3; ids derive from section words then
+        // §6: the section that spawned the body supplies its trade goods.
+        // Pure hash of the heading (goods.ts) — not a draw, so no stream shift.
+        goodIds: section ? goodsForSectionTitle(section.title) : [],
         loreSeed: seedToHex(hash128(`${seedToHex(systemSeed(meta.title))}/lore:${i}`)),
         resource:
           type === 'gas_giant' ? 'fuel_skim' : type === 'rocky' || type === 'lava' ? 'mining' : undefined,

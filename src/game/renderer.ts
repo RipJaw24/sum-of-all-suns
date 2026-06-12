@@ -36,6 +36,9 @@ export interface HudState {
   hull: number;
   hullMax: number;
   credits: number;
+  /** M3 trade hold: units carried / capacity. */
+  cargo: number;
+  cargoMax: number;
   jumps: number;
   prompt: HudPrompt | null;
   /** e.g. degraded-telemetry warning. */
@@ -318,7 +321,7 @@ export class Renderer {
     bar(56, hud.fuel / hud.fuelMax, '#7fd4ff', `FUEL ${Math.round(hud.fuel)}/${hud.fuelMax}`);
     bar(72, hud.hull / hud.hullMax, '#9ee887', `HULL ${Math.round(hud.hull)}/${hud.hullMax}`);
     ctx.fillStyle = 'rgba(205, 214, 244, 0.8)';
-    ctx.fillText(`${hud.credits} cr`, 16, 100);
+    ctx.fillText(`${hud.credits} cr · CARGO ${hud.cargo}/${hud.cargoMax}`, 16, 100);
 
     let noticeY = 120;
     if (hud.hazardLabel) {

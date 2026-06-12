@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "seed": "df1d40d6e5423b7b306776f10a380d5c",
+  "seed": "3e45b2e125b140bf8a8b3f29917fcd77",
   "sourceTitle": "Bioluminescent bay",
   "name": "Velaestrerk",
   "kind": "standard",
   "star": {
-    "class": "white_dwarf",
-    "radius": 15.1,
-    "color": "#f4f8ff",
-    "hazardRadius": 0
+    "class": "pulsar",
+    "radius": 16.454,
+    "color": "#aee6ff",
+    "hazardRadius": 220
   },
   "bodies": [
     {
@@ -16,23 +16,16 @@
       "name": "Velaestrerk I",
       "type": "rocky",
       "radius": 19.333,
-      "orbitRadius": 135.219,
-      "orbitPeriodSec": 307.275,
-      "initialAngle": 0.639,
-      "hasRings": false,
-      "moons": [
-        {
-          "id": "moon:0:0",
-          "name": "Velaestrerk Ia",
-          "radius": 5.257,
-          "orbitRadius": 66,
-          "orbitPeriodSec": 29.401,
-          "initialAngle": 3.918
-        }
-      ],
+      "orbitRadius": 148.113,
+      "orbitPeriodSec": 312.566,
+      "initialAngle": 4.702,
+      "hasRings": true,
+      "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "e758f0a7d38e098b6e65740a5ab38d26",
+        "goodIds": [
+          "ferrite-slag"
+        ],
+        "loreSeed": "7995bfa4fb4a371d6b9ddcfde9425444",
         "resource": "mining"
       }
     },
@@ -41,40 +34,44 @@
       "name": "Velaestrerk II",
       "type": "ocean",
       "radius": 23,
-      "orbitRadius": 251.367,
-      "orbitPeriodSec": 516.447,
-      "initialAngle": 0.905,
+      "orbitRadius": 243.445,
+      "orbitPeriodSec": 465.762,
+      "initialAngle": 2.361,
       "hasRings": true,
       "moons": [],
       "site": {
-        "goodIds": [],
-        "loreSeed": "c64fd1e8b8532d27df0bf56ca11709a3"
-      }
-    },
-    {
-      "id": "body:2",
-      "name": "Velaestrerk III",
-      "type": "rocky",
-      "radius": 12.667,
-      "orbitRadius": 327.414,
-      "orbitPeriodSec": 597.225,
-      "initialAngle": 2.132,
-      "hasRings": false,
-      "moons": [],
-      "site": {
-        "goodIds": [],
-        "loreSeed": "6646e365c22e170c6ac6b736ceae435f",
-        "resource": "mining"
+        "goodIds": [
+          "polymer-stock",
+          "ration-paste"
+        ],
+        "loreSeed": "5110593a9a7cc7ad73f5a263b8993cf4"
       },
       "station": {
         "id": "station:0",
-        "name": "Relay Goahork",
+        "name": "Spire Shudel",
         "services": [
           "refuel",
           "repair",
           "trade"
         ],
-        "priceLevel": 0.664
+        "priceLevel": 0.576
+      }
+    },
+    {
+      "id": "body:2",
+      "name": "Velaestrerk III",
+      "type": "ice",
+      "radius": 12.667,
+      "orbitRadius": 339.991,
+      "orbitPeriodSec": 589.336,
+      "initialAngle": 0.297,
+      "hasRings": false,
+      "moons": [],
+      "site": {
+        "goodIds": [
+          "polymer-stock"
+        ],
+        "loreSeed": "7cfc01e76157b264a912786ab4b9cbe9"
       }
     }
   ],
@@ -84,7 +81,7 @@
       "destinationTitle": "Bioluminescence",
       "destinationName": "South Zoxvaur",
       "kind": "charted",
-      "angle": 4.242,
+      "angle": 5.33,
       "rimRadius": 500,
       "fuelCostFactor": 1
     },
@@ -93,7 +90,7 @@
       "destinationTitle": "Dinoflagellate",
       "destinationName": "Preix Drushei",
       "kind": "charted",
-      "angle": 6.142,
+      "angle": 0.767,
       "rimRadius": 500,
       "fuelCostFactor": 1.15
     },
@@ -102,7 +99,7 @@
       "destinationTitle": "Noctiluca scintillans",
       "destinationName": "Mithaul",
       "kind": "wormhole",
-      "angle": 1.106,
+      "angle": 2.103,
       "rimRadius": 500,
       "fuelCostFactor": 1.3
     },
@@ -111,15 +108,16 @@
       "destinationTitle": "Mosquito Bay",
       "destinationName": "Preimdoutis",
       "kind": "uncharted",
-      "angle": 2.992,
+      "angle": 3.81,
       "rimRadius": 500,
       "fuelCostFactor": 0.725,
-      "unchartedOutcome": "sparse"
+      "unchartedOutcome": "salvage_field"
     }
   ],
   "ambient": {
     "paletteId": 2,
-    "nebulaSeed": "b242c62a8d05ae6066197112595e1958"
+    "nebulaSeed": "91b4a58cd4bd4a52f45fb2d0b1565d0e",
+    "hazard": "radiation"
   },
   "traffic": 0.515
 }

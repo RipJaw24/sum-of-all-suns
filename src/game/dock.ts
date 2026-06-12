@@ -1,11 +1,12 @@
 /**
- * dock.ts — station docking (§7: refuel at stations for credits; M2 scope is
- * refuel + repair, trade goods are M3). Pure quote/transaction helpers on
- * RunState plus a canvas overlay in the map.ts style. main.ts owns the
- * docked/flying mode switch; while docked the ship is parked and safe.
+ * dock.ts — station docking (§7: refuel/repair for credits, M3 trade view).
+ * Pure quote/transaction helpers on RunState plus canvas overlays in the
+ * map.ts style. main.ts owns the docked/flying mode switch and the
+ * services/trade view toggle; while docked the ship is parked and safe.
  */
 
-import type { BodySpec, StationSpec } from '../types';
+import { goodById } from '../gen/goods';
+import type { BodySpec, StationSpec, SystemSpec } from '../types';
 import {
   REFUEL_STEP,
   REPAIR_STEP,
@@ -13,7 +14,18 @@ import {
   repairUnitPrice,
   serviceCost,
 } from './economy';
-import { addFuel, repairHull, spendCredits, type RunState } from './run';
+import { marketGoodIds, priceFor } from './market';
+import {
+  CARGO_MAX,
+  addCargo,
+  addCredits,
+  addFuel,
+  cargoCount,
+  removeCargo,
+  repairHull,
+  spendCredits,
+  type RunState,
+} from './run';
 
 export interface ServiceQuote {
   /** Units actually deliverable (capped by the relevant gauge). */
@@ -44,6 +56,23 @@ export function buyRepair(run: RunState, station: StationSpec): boolean {
   const { units, cost } = repairQuote(run, station);
   if (units <= 0 || !spendCredits(run, cost)) return false;
   repairHull(run, units);
+  return true;
+}
+
+// --- M3 trade (§7: prices from market.ts; profit comes from geography) -------
+
+/** Buy one unit. False when the hold is full or credits are short. */
+export function buyGood(run: RunState, spec: SystemSpec, goodId: string): boolean {
+  if (cargoCount(run) >= CARGO_MAX) return false;
+  if (!spendCredits(run, priceFor(spec, goodId))) return false;
+  addCargo(run, goodId, 1);
+  return true;
+}
+
+/** Sell one held unit at the local price. False when none is held. */
+export function sellGood(run: RunState, spec: SystemSpec, goodId: string): boolean {
+  if (!removeCargo(run, goodId, 1)) return false;
+  addCredits(run, priceFor(spec, goodId));
   return true;
 }
 
@@ -79,7 +108,7 @@ export function drawDock(
   ctx.fillStyle = '#cdd6f4';
   ctx.font = '13px monospace';
   ctx.fillText(
-    `FUEL ${Math.round(run.fuel)}/${run.fuelMax}   HULL ${Math.round(run.hull)}/${run.hullMax}   ${run.credits} cr`,
+    `FUEL ${Math.round(run.fuel)}/${run.fuelMax}   HULL ${Math.round(run.hull)}/${run.hullMax}   ${run.credits} cr   CARGO ${cargoCount(run)}/${CARGO_MAX}`,
     x + 20,
     y + 84,
   );
@@ -104,8 +133,63 @@ export function drawDock(
     line(label, 1, repair.units > 0 && run.credits >= repair.cost);
   }
   if (station.services.includes('trade')) {
-    line('[T] TRADE — market offline', 2, false); // goods arrive in M3
+    line('[T] TRADE', 2, true);
   }
   ctx.fillStyle = '#7fd4ff';
   ctx.fillText('[E] UNDOCK', x + 20, y + 124 + 3 * 26 + 10);
+}
+
+/** Trade view of the dock overlay. `cursor` indexes marketGoodIds(spec). */
+export function drawTrade(
+  ctx: CanvasRenderingContext2D,
+  body: BodySpec,
+  run: RunState,
+  spec: SystemSpec,
+  cursor: number,
+): void {
+  const station = body.station!;
+  const goods = marketGoodIds(spec);
+  const { width, height } = ctx.canvas;
+  const w = 460;
+  const h = 170 + goods.length * 22;
+  const x = (width - w) / 2;
+  const y = (height - h) / 2;
+
+  ctx.fillStyle = 'rgba(4, 5, 10, 0.82)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(10, 14, 24, 0.95)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#7fd4ff';
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#7fd4ff';
+  ctx.font = '16px monospace';
+  ctx.fillText(`MARKET — ${station.name}`, x + 20, y + 32);
+  ctx.fillStyle = '#cdd6f4';
+  ctx.font = '13px monospace';
+  ctx.fillText(`${run.credits} cr   CARGO ${cargoCount(run)}/${CARGO_MAX}`, x + 20, y + 58);
+
+  goods.forEach((id, i) => {
+    const good = goodById(id);
+    if (!good) return;
+    const price = priceFor(spec, id);
+    const held = run.cargo[id] ?? 0;
+    const rowY = y + 92 + i * 22;
+    const selected = i === cursor;
+    if (selected) {
+      ctx.fillStyle = 'rgba(127, 212, 255, 0.12)';
+      ctx.fillRect(x + 12, rowY - 14, w - 24, 20);
+    }
+    ctx.fillStyle = selected ? '#7fd4ff' : '#cdd6f4';
+    ctx.fillText(`${selected ? '▸ ' : '  '}${good.name}`, x + 20, rowY);
+    ctx.textAlign = 'right';
+    ctx.fillStyle =
+      run.credits >= price || held > 0 ? 'rgba(205, 214, 244, 0.85)' : 'rgba(205, 214, 244, 0.35)';
+    ctx.fillText(`${price} cr   held ${held}`, x + w - 20, rowY);
+    ctx.textAlign = 'left';
+  });
+
+  ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
+  ctx.fillText('[W/S] select   [B] buy   [V] sell   [T] services   [E] undock', x + 20, y + h - 20);
 }

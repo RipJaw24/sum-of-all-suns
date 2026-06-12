@@ -18,7 +18,7 @@ import {
   MemoryArticleStore,
   type ArticleSource,
 } from '../wiki/cache';
-import { buyRefuel, buyRepair, drawDock } from './dock';
+import { buyGood, buyRefuel, buyRepair, drawDock, drawTrade, sellGood } from './dock';
 import {
   HAZARD_POCKET_ENTRY_DAMAGE,
   SKIM_FUEL_PER_SEC,
@@ -29,11 +29,14 @@ import { hazardAt } from './hazards';
 import { Input } from './input';
 import { drawMap } from './map';
 import { Renderer, bodyPosition, gatePosition, type HudPrompt, type HudState } from './renderer';
+import { marketGoodIds } from './market';
 import {
+  CARGO_MAX,
   addCredits,
   addFuel,
   applyJump,
   canJump,
+  cargoCount,
   clearRun,
   damageHull,
   declareAdrift,
@@ -117,6 +120,8 @@ async function boot(): Promise<void> {
   let transition: Transition | null = null;
   let mode: Mode = run.status === 'dead' ? 'summary' : 'flying';
   let dockedBody: BodySpec | null = null;
+  let dockView: 'services' | 'trade' = 'services';
+  let tradeCursor = 0;
   let summary: SummaryState = newSummaryState();
   let dyingUntil: number | null = null;
   let damageFlash = 0;
@@ -271,6 +276,7 @@ async function boot(): Promise<void> {
       case 'dock':
         mode = 'docked';
         dockedBody = target.body;
+        dockView = 'services';
         ship.vx = 0;
         ship.vy = 0;
         return;
@@ -422,6 +428,8 @@ async function boot(): Promise<void> {
       hull: run.hull,
       hullMax: run.hullMax,
       credits: run.credits,
+      cargo: cargoCount(run),
+      cargoMax: CARGO_MAX,
       jumps: run.route.length - 1,
       prompt: jumping || dying || !target ? null : promptFor(target, skimming),
       adrift,
@@ -450,8 +458,24 @@ async function boot(): Promise<void> {
   function frameDocked(t: number): void {
     const body = dockedBody!;
     const station = body.station!;
-    if (input.wasPressed('KeyR') && buyRefuel(run, station)) saveRun(run);
-    if (input.wasPressed('KeyF') && buyRepair(run, station)) saveRun(run);
+    if (dockView === 'services') {
+      if (input.wasPressed('KeyR') && buyRefuel(run, station)) saveRun(run);
+      if (input.wasPressed('KeyF') && buyRepair(run, station)) saveRun(run);
+      if (input.wasPressed('KeyT') && station.services.includes('trade')) {
+        dockView = 'trade';
+        tradeCursor = 0;
+      }
+    } else {
+      const goods = marketGoodIds(spec);
+      if (input.wasPressed('KeyW', 'ArrowUp')) {
+        tradeCursor = (tradeCursor + goods.length - 1) % goods.length;
+      }
+      if (input.wasPressed('KeyS', 'ArrowDown')) tradeCursor = (tradeCursor + 1) % goods.length;
+      const goodId = goods[tradeCursor];
+      if (goodId && input.wasPressed('KeyB') && buyGood(run, spec, goodId)) saveRun(run);
+      if (goodId && input.wasPressed('KeyV') && sellGood(run, spec, goodId)) saveRun(run);
+      if (input.wasPressed('KeyT')) dockView = 'services';
+    }
     if (input.wasPressed('KeyE', 'Space')) {
       // Undock just outside the body, on its anti-star side (the body kept
       // orbiting while we were docked).
@@ -472,11 +496,14 @@ async function boot(): Promise<void> {
       hull: run.hull,
       hullMax: run.hullMax,
       credits: run.credits,
+      cargo: cargoCount(run),
+      cargoMax: CARGO_MAX,
       jumps: run.route.length - 1,
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
-    drawDock(ctx, body, run);
+    if (dockView === 'trade') drawTrade(ctx, body, run, spec, tradeCursor);
+    else drawDock(ctx, body, run);
   }
 
   function frameSummary(t: number): void {

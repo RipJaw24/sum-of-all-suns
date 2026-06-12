@@ -10,10 +10,13 @@ import { systemName } from '../gen/names';
 import { hash128, normalizeTitle } from '../rng';
 import type { GateKind, GateSpec, SystemSpec } from '../types';
 import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
+import { cargoValue } from './market';
 import { derelictsFor } from './salvage';
 
 export const FUEL_MAX = 100;
 export const BASE_JUMP_FUEL = 8;
+/** M3 trade: total units of goods the ship can carry. */
+export const CARGO_MAX = 10;
 
 const TAU = Math.PI * 2;
 
@@ -26,7 +29,7 @@ export interface RouteEntry {
 export type DeathCause = 'hull' | 'adrift';
 
 export interface RunState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   /** Article title of the system the player is in. SPOILER. */
   currentTitle: string;
   /** Where we jumped here from; drives the §4.2 return gate. */
@@ -36,6 +39,8 @@ export interface RunState {
   hull: number;
   hullMax: number;
   credits: number;
+  /** M3 trade hold: goodId -> units. Total capped at CARGO_MAX. */
+  cargo: Record<string, number>;
   /** One-time pickup/event keys ("<title>/<id>"): mined bodies, emptied
    *  derelicts, hazard-pocket entry hits. See lootKey(). */
   looted: string[];
@@ -47,13 +52,14 @@ export interface RunState {
 export function newRun(startTitle: string): RunState {
   const title = normalizeTitle(startTitle);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     currentTitle: title,
     fuel: FUEL_MAX,
     fuelMax: FUEL_MAX,
     hull: HULL_MAX,
     hullMax: HULL_MAX,
     credits: START_CREDITS,
+    cargo: {},
     looted: [],
     status: 'active',
     route: [{ title, via: 'start' }],
@@ -93,6 +99,29 @@ export function spendCredits(run: RunState, amount: number): boolean {
   return true;
 }
 
+// --- M3 cargo hold ------------------------------------------------------------
+
+export function cargoCount(run: RunState): number {
+  return Object.values(run.cargo).reduce((s, n) => s + n, 0);
+}
+
+/** Add up to `qty` units, capped by hold space. Returns units actually added. */
+export function addCargo(run: RunState, goodId: string, qty: number): number {
+  const space = Math.max(0, CARGO_MAX - cargoCount(run));
+  const added = Math.min(space, qty);
+  if (added > 0) run.cargo[goodId] = (run.cargo[goodId] ?? 0) + added;
+  return added;
+}
+
+/** Remove `qty` units if held; returns false (and changes nothing) otherwise. */
+export function removeCargo(run: RunState, goodId: string, qty: number): boolean {
+  const held = run.cargo[goodId] ?? 0;
+  if (held < qty) return false;
+  if (held === qty) delete run.cargo[goodId];
+  else run.cargo[goodId] = held - qty;
+  return true;
+}
+
 /** Declare the run lost to stranding (player-acknowledged, see isStranded). */
 export function declareAdrift(run: RunState): void {
   run.status = 'dead';
@@ -124,10 +153,13 @@ export function isStranded(run: RunState, gates: readonly GateSpec[], spec: Syst
   const cheapest = Math.min(...gates.map(jumpCost));
   if (run.fuel >= cheapest) return false;
 
-  // Station fuel, limited by what the player can pay for.
+  // Station fuel, limited by what the player can pay for — counting what the
+  // hold would liquidate for where the station also trades (M3): a player
+  // sitting on sellable cargo is not stranded.
   const station = spec.bodies.find((b) => b.station?.services.includes('refuel'))?.station;
   if (station) {
-    const buyable = Math.floor(run.credits / refuelUnitPrice(station.priceLevel));
+    const sellable = station.services.includes('trade') ? cargoValue(run.cargo, spec) : 0;
+    const buyable = Math.floor((run.credits + sellable) / refuelUnitPrice(station.priceLevel));
     if (run.fuel + buyable >= cheapest) return false;
   }
   // Gas giants can always be skimmed (slow and hull-hazardous — that risk is
@@ -209,22 +241,37 @@ export function gatesFor(spec: SystemSpec, arrivedFrom: string | undefined): Gat
 
 // --- persistence ----------------------------------------------------------------
 
-// v2: M2 added hull/credits/looted/status. v1 saves are discarded (prototype
-// phase, no migration) — the version guard in loadRun returns null for them.
-const RUN_KEY = 'sas:run:v2';
+// v2: M2 added hull/credits/looted/status. v1 saves were discarded (prototype
+// phase). v3: M3 added the cargo hold — v2 saves migrate in place (cargo: {}).
+const RUN_KEY = 'sas:run:v3';
+const RUN_KEY_V2 = 'sas:run:v2';
 
 export function saveRun(run: RunState, storage: Storage = localStorage): void {
   storage.setItem(RUN_KEY, JSON.stringify(run));
 }
 
+/** Upgrade a v2 save to v3. Returns null for anything else. */
+function migrateV2(raw: string): RunState | null {
+  const run = JSON.parse(raw);
+  if (run?.schemaVersion !== 2 || typeof run.currentTitle !== 'string') return null;
+  return { ...run, schemaVersion: 3, cargo: {} } as RunState;
+}
+
 export function loadRun(storage: Storage = localStorage): RunState | null {
   try {
     const raw = storage.getItem(RUN_KEY);
-    if (!raw) return null;
-    const run = JSON.parse(raw);
-    return run?.schemaVersion === 2 && typeof run.currentTitle === 'string'
-      ? (run as RunState)
-      : null;
+    if (raw) {
+      const run = JSON.parse(raw);
+      return run?.schemaVersion === 3 && typeof run.currentTitle === 'string'
+        ? (run as RunState)
+        : null;
+    }
+    const old = storage.getItem(RUN_KEY_V2);
+    if (!old) return null;
+    const migrated = migrateV2(old);
+    storage.removeItem(RUN_KEY_V2);
+    if (migrated) saveRun(migrated, storage);
+    return migrated;
   } catch {
     return null;
   }

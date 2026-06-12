@@ -98,7 +98,7 @@ describe('GOLDEN VALUES — pins world stability across releases', () => {
       `"979d9ede556218f8da2ed0f418d156d2"`,
     );
     expect(seedToHex(systemSeed('Photosynthesis'))).toMatchInlineSnapshot(
-      `"efd84ffe9185d78655e6d69d2bbb4ee5"`,
+      `"028728afd9d75f3c30f637a9eba6403a"`,
     );
   });
 
@@ -107,10 +107,10 @@ describe('GOLDEN VALUES — pins world stability across releases', () => {
     const draws = Array.from({ length: 4 }, () => r.nextUint32());
     expect(draws).toMatchInlineSnapshot(`
       [
-        3265048534,
-        2868304156,
-        2110042940,
-        51687398,
+        2561231075,
+        2353780541,
+        1645395300,
+        1022859590,
       ]
     `);
   });

@@ -92,7 +92,7 @@ Run state (fuel, route, visited gates) is kept strictly separate from `SystemSpe
 |---|---|---|
 | **M0** | ✅ | Vite + TS project; fetch one article; `generate_system()` with golden tests; fly around on Canvas2D |
 | **M1** | ✅ | Jumping works end-to-end; snapshot cache; §4.2 return gates; fuel cost; system map |
-| **M2** | 🔲 | Fuel/hull/credits; docking + refuel; death + run summary; **Decrypt Flight Log** |
+| **M2** | ✅ | Fuel/hull/credits; docking + refuel; death + run summary; **Decrypt Flight Log** |
 | **M3** | 🔲 | Trade goods; lore fragments; anomaly systems; nebula backgrounds; PixiJS |
 | **M4** | 🔲 | Polish; secret-keeping audit; offline article pack; ship |
 
