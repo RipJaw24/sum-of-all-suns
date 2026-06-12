@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "title": "Tarn (lake)",
+  "byteLength": 1200,
+  "sections": [
+    { "title": "Formation", "byteLength": 700, "imageCount": 1 }
+  ],
+  "links": [
+    { "title": "Cirque", "byteLength": 14000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Glacial lake", "byteLength": 9100, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Paternoster lake", "byteLength": 1100, "isStub": true, "positionIndex": 2, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Glacial landforms", "Lakes", "Geography stubs"],
+  "hasInfobox": false,
+  "referenceCount": 2,
+  "pageviews60d": 1200,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

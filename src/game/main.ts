@@ -19,10 +19,12 @@ import {
   type ArticleSource,
 } from '../wiki/cache';
 import { buyGood, buyRefuel, buyRepair, drawDock, drawTrade, sellGood } from './dock';
+import { goodById } from '../gen/goods';
 import {
   HAZARD_POCKET_ENTRY_DAMAGE,
   SKIM_FUEL_PER_SEC,
   SKIM_HULL_DPS,
+  depositYield,
   miningYield,
 } from './economy';
 import { hazardAt } from './hazards';
@@ -32,6 +34,7 @@ import { Renderer, bodyPosition, gatePosition, type HudPrompt, type HudState } f
 import { marketGoodIds } from './market';
 import {
   CARGO_MAX,
+  addCargo,
   addCredits,
   addFuel,
   applyJump,
@@ -232,6 +235,13 @@ async function boot(): Promise<void> {
     return best;
   }
 
+  /** The rare good a §4.5 hazard-pocket deposit body holds, if any. */
+  function depositGoodOf(body: BodySpec) {
+    if (spec.kind !== 'hazard_pocket') return undefined;
+    const id = body.site.goodIds[0];
+    return id ? goodById(id) : undefined;
+  }
+
   function promptFor(target: Interactable, skimming: boolean): HudPrompt {
     switch (target.kind) {
       case 'gate': {
@@ -244,11 +254,18 @@ async function boot(): Promise<void> {
       }
       case 'dock':
         return { text: `[E] Dock — ${target.body.station!.name}`, tone: 'ok' };
-      case 'mine':
-        return {
-          text: `[E] Mine ${target.body.name} — +${miningYield(spec.seed, target.body.id)} cr`,
-          tone: 'ok',
-        };
+      case 'mine': {
+        const deposit = depositGoodOf(target.body);
+        return deposit
+          ? {
+              text: `[E] Extract deposit — ${deposit.name} ×${depositYield(spec.seed, target.body.id)}`,
+              tone: 'ok',
+            }
+          : {
+              text: `[E] Mine ${target.body.name} — +${miningYield(spec.seed, target.body.id)} cr`,
+              tone: 'ok',
+            };
+      }
       case 'skim':
         return skimming
           ? { text: `SKIMMING ${target.body.name} — hull stress`, tone: 'warn' }
@@ -281,6 +298,19 @@ async function boot(): Promise<void> {
         ship.vy = 0;
         return;
       case 'mine': {
+        // §4.5 hazard-pocket deposits yield rare CARGO, not credits.
+        const deposit = depositGoodOf(target.body);
+        if (deposit) {
+          const added = addCargo(run, deposit.id, depositYield(spec.seed, target.body.id));
+          if (added === 0) {
+            toast('CARGO HOLD FULL — deposit untouched', t);
+            return; // not looted; come back with space
+          }
+          markLooted(run, spec.sourceTitle, target.body.id);
+          saveRun(run);
+          toast(`+${added} ${deposit.name.toUpperCase()} — DEPOSIT EXTRACTED`, t);
+          return;
+        }
         const yieldCr = miningYield(spec.seed, target.body.id);
         addCredits(run, yieldCr);
         markLooted(run, spec.sourceTitle, target.body.id);

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "seed": "7f5e9389a2f40cfb8119dae75cb34595",
+  "sourceTitle": "Tepui",
+  "name": "Binyrkrol",
+  "kind": "deep_tunnel",
+  "star": {
+    "class": "red_dwarf",
+    "radius": 27.392,
+    "color": "#ff6b4a",
+    "hazardRadius": 0
+  },
+  "bodies": [
+    {
+      "id": "body:0",
+      "name": "Binyrkrol I",
+      "type": "ocean",
+      "radius": 23,
+      "orbitRadius": 136.275,
+      "orbitPeriodSec": 258.429,
+      "initialAngle": 2.778,
+      "hasRings": true,
+      "moons": [],
+      "site": {
+        "goodIds": [
+          "scrap-alloy",
+          "inert-gas"
+        ],
+        "loreSeed": "df7d6bc96331897cc0d833a27c94d117"
+      }
+    },
+    {
+      "id": "body:1",
+      "name": "Binyrkrol II",
+      "type": "lava",
+      "radius": 20.375,
+      "orbitRadius": 227.275,
+      "orbitPeriodSec": 446.139,
+      "initialAngle": 5.831,
+      "hasRings": false,
+      "moons": [],
+      "site": {
+        "goodIds": [
+          "isotope-cores"
+        ],
+        "loreSeed": "24615d80928c84227670d2d9c09d0b7b",
+        "resource": "mining"
+      }
+    }
+  ],
+  "gates": [
+    {
+      "id": "gate:0",
+      "destinationTitle": "Table mountain",
+      "destinationName": "Siandsax Minor",
+      "kind": "uncharted",
+      "angle": 0.358,
+      "rimRadius": 405,
+      "fuelCostFactor": 0.5,
+      "unchartedOutcome": "sparse"
+    },
+    {
+      "id": "gate:1",
+      "destinationTitle": "Guiana Shield",
+      "destinationName": "Hae Veloavourk",
+      "kind": "uncharted",
+      "angle": 1.89,
+      "rimRadius": 405,
+      "fuelCostFactor": 0.575,
+      "unchartedOutcome": "deep_tunnel"
+    },
+    {
+      "id": "gate:2",
+      "destinationTitle": "Mesa (landform)",
+      "destinationName": "Beirk Leigae Minor",
+      "kind": "uncharted",
+      "angle": 3.551,
+      "rimRadius": 405,
+      "fuelCostFactor": 0.65,
+      "unchartedOutcome": "sparse"
+    },
+    {
+      "id": "gate:3",
+      "destinationTitle": "Inselberg",
+      "destinationName": "Prythisot",
+      "kind": "uncharted",
+      "angle": 5.185,
+      "rimRadius": 405,
+      "fuelCostFactor": 0.725,
+      "unchartedOutcome": "sparse"
+    }
+  ],
+  "ambient": {
+    "paletteId": 1,
+    "nebulaSeed": "80eb7ed8eac5eb925be5a6ce31cb3384"
+  },
+  "traffic": 0.488
+}

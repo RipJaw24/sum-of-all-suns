@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "title": "Kettle hole",
+  "byteLength": 1650,
+  "sections": [
+    { "title": "Formation", "byteLength": 900, "imageCount": 1 },
+    { "title": "Distribution", "byteLength": 450, "imageCount": 0 }
+  ],
+  "links": [
+    { "title": "Glacier", "byteLength": 88000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Outwash plain", "byteLength": 5200, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Moraine", "byteLength": 21000, "isStub": false, "positionIndex": 2, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Esker", "byteLength": 1400, "isStub": true, "positionIndex": 3, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Glacial landforms", "Geography stubs"],
+  "hasInfobox": false,
+  "referenceCount": 3,
+  "pageviews60d": 900,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

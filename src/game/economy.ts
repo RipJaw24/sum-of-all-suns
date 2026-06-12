@@ -46,6 +46,11 @@ export function miningYield(systemSeed: string, bodyId: string): number {
   return new Rng(hash128(`${systemSeed}/mine:${bodyId}`)).int(8, 21);
 }
 
+/** Units of rare goods in a hazard-pocket deposit body (§4.5). */
+export function depositYield(systemSeed: string, bodyId: string): number {
+  return new Rng(hash128(`${systemSeed}/deposit:${bodyId}`)).int(3, 6);
+}
+
 // --- salvage (§4.5 salvage_field derelicts; full table in salvage.ts) --------
 
 export const DERELICT_FUEL_MIN = 10;

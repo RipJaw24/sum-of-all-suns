@@ -7,7 +7,16 @@
 import { describe, expect, it } from 'vitest';
 import { GATES_MAX, GATES_MIN, MAX_BODIES, type SystemSpec } from '../types';
 import { gateFuelFactor, generateSystem, unchartedOutcomeFor } from './generate';
-import { bioluminescentBay, mercuryDisambiguation, photosynthesis } from './fixtures';
+import {
+  bioluminescentBay,
+  mercuryDisambiguation,
+  photosynthesis,
+  stubHazard,
+  stubSalvage,
+  stubSparse,
+  stubTunnel,
+} from './fixtures';
+import { goodById } from './goods';
 
 function golden(spec: SystemSpec): string {
   return JSON.stringify(spec, null, 2);
@@ -32,8 +41,93 @@ describe('golden files — byte-identical generation', () => {
     );
   });
 
+  it('oxbow lake (stub -> salvage field)', async () => {
+    await expect(golden(generateSystem(stubSalvage))).toMatchFileSnapshot(
+      './__goldens__/stub-salvage.golden.json',
+    );
+  });
+
+  it('tepui (stub -> deep tunnel)', async () => {
+    await expect(golden(generateSystem(stubTunnel))).toMatchFileSnapshot(
+      './__goldens__/stub-tunnel.golden.json',
+    );
+  });
+
   it('generation is pure: repeated calls are byte-identical', () => {
     expect(golden(generateSystem(photosynthesis))).toBe(golden(generateSystem(photosynthesis)));
+  });
+});
+
+// --- §4.5 anomaly systems ------------------------------------------------------
+
+describe('anomaly systems (§4.5: stub destinations)', () => {
+  const sparse = generateSystem(stubSparse);
+  const salvage = generateSystem(stubSalvage);
+  const hazard = generateSystem(stubHazard);
+  const tunnel = generateSystem(stubTunnel);
+  const all = [sparse, salvage, hazard, tunnel];
+
+  it("each stub's kind matches its gate pre-roll (promise == arrival)", () => {
+    for (const [meta, sys] of [
+      [stubSparse, sparse],
+      [stubSalvage, salvage],
+      [stubHazard, hazard],
+      [stubTunnel, tunnel],
+    ] as const) {
+      expect(sys.kind).toBe(unchartedOutcomeFor(meta.title));
+    }
+  });
+
+  it('no anomaly system hosts a station — stubs are wild space', () => {
+    for (const sys of all) {
+      expect(sys.bodies.every((b) => !b.station)).toBe(true);
+    }
+  });
+
+  it('sparse: dim red dwarf, ≤2 barren bodies, ≤3 gates', () => {
+    expect(sparse.star?.class).toBe('red_dwarf');
+    expect(sparse.bodies.length).toBeLessThanOrEqual(2);
+    expect(sparse.gates.length).toBeLessThanOrEqual(3);
+    for (const b of sparse.bodies) {
+      expect(b.hasRings).toBe(false);
+      expect(b.moons).toEqual([]);
+      expect(b.site.resource).toBeUndefined();
+      expect(b.site.goodIds).toEqual([]);
+    }
+  });
+
+  it('salvage field: richness in [0.2, 1], scaled by isolation', () => {
+    expect(salvage.salvageRichness).toBeGreaterThanOrEqual(0.2);
+    expect(salvage.salvageRichness).toBeLessThanOrEqual(1);
+    // 2 outbound links, 950 bytes -> a well-isolated, well-paying wreck site.
+    expect(salvage.salvageRichness!).toBeGreaterThan(0.5);
+    // richness only exists on salvage fields
+    for (const sys of [sparse, hazard, tunnel]) {
+      expect(sys.salvageRichness).toBeUndefined();
+    }
+  });
+
+  it('hazard pocket: ambient hazard + a tight-orbit rare-good deposit', () => {
+    expect(['storm', 'radiation']).toContain(hazard.ambient.hazard);
+    const deposit = hazard.bodies[0]!;
+    expect(deposit.orbitRadius).toBeLessThan(150);
+    expect(deposit.site.resource).toBe('mining');
+    expect(deposit.site.goodIds).toHaveLength(1);
+    expect(goodById(deposit.site.goodIds[0]!)?.tier).toBe('rare');
+  });
+
+  it('deep tunnel: every gate is uncharted with its own pre-roll, half fuel', () => {
+    expect(tunnel.gates.length).toBeGreaterThan(0);
+    for (const [i, gate] of tunnel.gates.entries()) {
+      expect(gate.kind).toBe('uncharted');
+      expect(gate.unchartedOutcome).toBe(unchartedOutcomeFor(gate.destinationTitle));
+      expect(gate.fuelCostFactor).toBe(gateFuelFactor(i, 'uncharted'));
+    }
+  });
+
+  it('disambiguation precedence: a tiny disambig page still shatters', () => {
+    // mercury fixture is 1.9 KB — under STUB_BYTES, but disambig wins.
+    expect(generateSystem(mercuryDisambiguation).kind).toBe('shattered');
   });
 });
 

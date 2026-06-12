@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "title": "Oxbow lake",
+  "byteLength": 950,
+  "sections": [
+    { "title": "Hydrology", "byteLength": 600, "imageCount": 0 }
+  ],
+  "links": [
+    { "title": "Meander", "byteLength": 26000, "isStub": false, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Billabong", "byteLength": 7800, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Fluvial landforms", "Geography stubs"],
+  "hasInfobox": false,
+  "referenceCount": 1,
+  "pageviews60d": 350,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "title": "Tepui",
+  "byteLength": 1800,
+  "sections": [
+    { "title": "Geology", "byteLength": 800, "imageCount": 1 },
+    { "title": "Ecology", "byteLength": 650, "imageCount": 0 }
+  ],
+  "links": [
+    { "title": "Table mountain", "byteLength": 1500, "isStub": true, "positionIndex": 0, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Guiana Shield", "byteLength": 17000, "isStub": false, "positionIndex": 1, "isDisambiguation": false, "isRedirect": false },
+    { "title": "Mesa", "byteLength": 12000, "isStub": false, "positionIndex": 2, "isDisambiguation": false, "isRedirect": true, "resolvedTitle": "Mesa (landform)" },
+    { "title": "Inselberg", "byteLength": 1900, "isStub": true, "positionIndex": 3, "isDisambiguation": false, "isRedirect": false }
+  ],
+  "categories": ["Plateaus", "Geography of South America"],
+  "hasInfobox": false,
+  "referenceCount": 4,
+  "pageviews60d": 2600,
+  "isDisambiguation": false,
+  "snapshotAt": "2026-06-01T00:00:00.000Z"
+}

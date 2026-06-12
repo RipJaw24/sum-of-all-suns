@@ -176,10 +176,11 @@ export interface AsteroidBeltSpec {
 
 export type SystemKind =
   | 'standard'
-  | 'shattered'   // disambiguation page: no star, debris, every entry a gate
-  | 'sparse'      // uncharted outcome
-  | 'salvage_field'
-  | 'hazard_pocket';
+  | 'shattered'      // disambiguation page: no star, debris, every entry a gate
+  | 'sparse'         // §4.5 stub outcomes — the destination article IS a stub,
+  | 'salvage_field'  //   and its kind matches the unchartedOutcomeFor pre-roll
+  | 'hazard_pocket'  //   stamped on every gate that points at it
+  | 'deep_tunnel';   // stub whose own gates are all uncharted (cheap chain)
 
 export interface AmbientSpec {
   /** Index into the curated palette table (category hash -> palette). */
@@ -207,6 +208,10 @@ export interface SystemSpec {
   /** 0..1 normalized from pageviews60d (log scale). Drives NPC density,
    *  prices, and (post-MVP) patrol/pirate presence. */
   traffic: number;
+  /** Present iff kind === 'salvage_field' (§4.5: isolated stubs pay best).
+   *  0.2..1 from an isolation proxy — the stub's own OUTBOUND link count and
+   *  byte length; we never fetch inbound links. Scales derelict yields. */
+  salvageRichness?: number;
 }
 
 // ---------------------------------------------------------------------------

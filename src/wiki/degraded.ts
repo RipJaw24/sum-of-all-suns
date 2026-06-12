@@ -23,6 +23,8 @@ export function degradedMetadata(rawTitle: string): ArticleMetadata {
     schemaVersion: 1,
     title,
     // Always small -> dim red dwarf, fittingly "off" for a sensor glitch.
+    // INVARIANT: must stay >= STUB_BYTES (2,000) so a degraded system can
+    // never trip generate.ts's §4.5 anomaly branch (generateAnomaly).
     byteLength: rng.int(2_500, 9_000),
     sections: Array.from({ length: sectionCount }, (_, i) => ({
       title: `static:${i}`,

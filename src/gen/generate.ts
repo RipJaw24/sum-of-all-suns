@@ -12,7 +12,7 @@
  */
 
 import { Rng, hash128, normalizeTitle, rngForArticle, seedToHex, systemSeed } from '../rng';
-import { goodsForSectionTitle } from './goods';
+import { GOODS, goodsForSectionTitle } from './goods';
 import { bodyName, moonName, stationName, systemName } from './names';
 import {
   type ArticleMetadata,
@@ -30,6 +30,7 @@ import {
   GATES_MIN,
   MAX_BODIES,
   STAR_CLASS_BYTES,
+  STUB_BYTES,
   UNCHARTED_FUEL_FACTOR,
   UNCHARTED_OUTCOME_WEIGHTS,
 } from '../types';
@@ -222,7 +223,12 @@ function makeGate(link: LinkMeta, index: number, angle: number, rimRadius: numbe
   return gate;
 }
 
-function generateGates(links: readonly LinkMeta[], rng: Rng, rimRadius: number, all: boolean): GateSpec[] {
+function generateGates(
+  links: readonly LinkMeta[],
+  rng: Rng,
+  rimRadius: number,
+  opts: { all?: boolean; cap?: number } = {},
+): GateSpec[] {
   // Dedupe by destination, keep earliest occurrence, rank by position (§4.1).
   const seen = new Set<string>();
   const ranked = [...links]
@@ -233,7 +239,8 @@ function generateGates(links: readonly LinkMeta[], rng: Rng, rimRadius: number, 
       seen.add(key);
       return true;
     });
-  const chosen = all ? ranked : ranked.slice(0, gateCount(ranked.length));
+  const count = Math.min(gateCount(ranked.length), opts.cap ?? Infinity);
+  const chosen = opts.all ? ranked : ranked.slice(0, count);
   const n = chosen.length;
   const baseAngle = rng.angle();
   return chosen.map((link, i) => {
@@ -255,45 +262,139 @@ function paletteIdFor(categories: readonly string[]): number {
   return hash128(`palette:${canonical}`)[0] % PALETTE_COUNT;
 }
 
-// --- entry point ---------------------------------------------------------------
+// --- anomaly systems (§4.5: stub destinations) ---------------------------------
 
-export function generateSystem(meta: ArticleMetadata): SystemSpec {
-  const title = normalizeTitle(meta.title);
-  const seed = systemSeed(title);
-  const seedHex = seedToHex(seed);
-  const root = new Rng(seed);
-  const name = systemName(title);
-  const traffic = trafficFor(meta);
+/** Shared per-system context threaded through the generation paths. */
+interface GenContext {
+  title: string;
+  seedHex: string;
+  name: string;
+  traffic: number;
+  ambientBase: { paletteId: number; nebulaSeed: string };
+}
 
-  const ambientBase = {
-    paletteId: paletteIdFor(meta.categories),
-    nebulaSeed: seedToHex(hash128(`${seedHex}/nebula`)),
+/** A lifeless rock for sparse/salvage/hazard systems: no rings, no moons,
+ *  no station, no goods. loreSeed derivation matches generateBodies. */
+function barrenBody(rng: Rng, layout: Rng, i: number, ctx: GenContext): BodySpec {
+  const orbitRadius = roundTo(FIRST_ORBIT + i * ORBIT_SPACING + layout.range(-18, 18));
+  return {
+    id: `body:${i}`,
+    name: bodyName(ctx.name, i),
+    type: rng.chance(0.5) ? 'rocky' : 'ice',
+    radius: roundTo(rng.range(7, 15)),
+    orbitRadius,
+    orbitPeriodSec: roundTo(orbitRadius * rng.range(1.6, 2.4)),
+    initialAngle: roundTo(rng.angle()),
+    hasRings: false,
+    moons: [],
+    site: {
+      goodIds: [],
+      loreSeed: seedToHex(hash128(`${ctx.seedHex}/lore:${i}`)),
+    },
   };
+}
 
-  if (meta.isDisambiguation) {
-    // Shattered system (§4.3): no star, debris everywhere, every entry a gate.
-    const debris = root.fork('belt');
+/**
+ * §4.5: a stub article (< STUB_BYTES) generates as the anomaly its
+ * unchartedOutcomeFor pre-roll promises — the SAME roll every origin gate
+ * stamped on itself, so the gate's promise and the arrival always agree
+ * (including ?start=<stub> runs). No anomaly hosts a station: stubs are
+ * wild space. degraded.ts deliberately synthesizes byteLength >= 2,500 so
+ * sensor-interference fallbacks can never land here.
+ */
+function generateAnomaly(meta: ArticleMetadata, root: Rng, ctx: GenContext): SystemSpec {
+  const outcome = unchartedOutcomeFor(ctx.title);
+
+  if (outcome === 'deep_tunnel') {
+    // The stub's own few links are all uncharted too (§4.5) — otherwise a
+    // standard system. The forced kind wins over each link's own nature; a
+    // destination that turns out substantial simply generates normally on
+    // arrival and its pre-rolled outcome goes unused.
+    const spec = generateStandard(meta, root, ctx);
     return {
-      schemaVersion: 1,
-      seed: seedHex,
-      sourceTitle: title,
-      name,
-      kind: 'shattered',
-      star: null,
-      bodies: [],
-      gates: generateGates(meta.links, root.fork('gates'), 520, /* all: */ true),
-      belt: {
-        innerRadius: roundTo(debris.range(60, 120)),
-        outerRadius: roundTo(debris.range(380, 470)),
-        density: roundTo(debris.range(0.6, 0.9)),
-      },
-      ambient: { ...ambientBase, hazard: 'debris' },
-      traffic,
+      ...spec,
+      kind: 'deep_tunnel',
+      gates: spec.gates.map((g, i) => ({
+        ...g,
+        kind: 'uncharted' as const,
+        fuelCostFactor: gateFuelFactor(i, 'uncharted'),
+        unchartedOutcome: unchartedOutcomeFor(g.destinationTitle),
+      })),
+      bodies: spec.bodies.map(({ station: _station, ...body }) => body),
     };
   }
 
+  const arng = root.fork('anomaly');
+
+  // Dim husk of a star — every non-tunnel anomaly reads as dead space.
+  const star: StarSpec = {
+    class: 'red_dwarf',
+    radius: roundTo(STAR_VISUALS.red_dwarf.radius * 0.7 * arng.range(0.9, 1.15)),
+    color: arng.pick(STAR_VISUALS.red_dwarf.colors),
+    hazardRadius: 0,
+  };
+
+  const layout = root.fork('bodies');
+  const bodyCount =
+    outcome === 'sparse' ? arng.int(0, 3) : outcome === 'salvage_field' ? arng.int(0, 4) : arng.int(1, 3);
+  const bodies: BodySpec[] = [];
+  for (let i = 0; i < bodyCount; i++) {
+    bodies.push(barrenBody(root.fork(`body:${i}`), layout, i, ctx));
+  }
+
+  if (outcome === 'hazard_pocket' && bodies[0]) {
+    // The rare-good deposit at the center, inside the danger (§4.5).
+    const deposit = bodies[0];
+    deposit.type = arng.chance(0.5) ? 'lava' : 'rocky';
+    deposit.orbitRadius = roundTo(110 + arng.range(0, 25));
+    deposit.orbitPeriodSec = roundTo(deposit.orbitRadius * arng.range(1.6, 2.4));
+    deposit.site.resource = 'mining';
+    deposit.site.goodIds = [arng.pick(GOODS.filter((g) => g.tier === 'rare')).id];
+  }
+
+  const rimRadius = FIRST_ORBIT + Math.max(0, bodies.length - 1) * ORBIT_SPACING + 160;
+  const gates = generateGates(
+    meta.links,
+    root.fork('gates'),
+    rimRadius,
+    // Sparse systems are nearly dead ends — that risk is the §4.5 cost.
+    outcome === 'sparse' ? { cap: 3 } : {},
+  );
+
+  const hazard = outcome === 'hazard_pocket' ? (arng.chance(0.5) ? 'storm' : 'radiation') : undefined;
+
+  return {
+    schemaVersion: 1,
+    seed: ctx.seedHex,
+    sourceTitle: ctx.title,
+    name: ctx.name,
+    kind: outcome,
+    star,
+    bodies,
+    gates,
+    ambient: { ...ctx.ambientBase, ...(hazard ? { hazard } : {}) },
+    traffic: ctx.traffic,
+    ...(outcome === 'salvage_field'
+      ? {
+          // Isolation proxy: fewer outbound links + tinier article = richer
+          // wreck (§4.5 balance lever; we never fetch inbound links).
+          salvageRichness: roundTo(
+            clamp(
+              0.3 + (1 - meta.links.length / 8) * 0.5 + (1 - meta.byteLength / STUB_BYTES) * 0.2,
+              0.2,
+              1,
+            ),
+          ),
+        }
+      : {}),
+  };
+}
+
+// --- standard systems -----------------------------------------------------------
+
+function generateStandard(meta: ArticleMetadata, root: Rng, ctx: GenContext): SystemSpec {
   const star = generateStar(meta, root.fork('star'));
-  const bodies = generateBodies(meta, root, name);
+  const bodies = generateBodies(meta, root, ctx.name);
 
   let belt: AsteroidBeltSpec | undefined;
   if (meta.referenceCount >= BELT_MIN_REFS) {
@@ -309,22 +410,69 @@ export function generateSystem(meta: ArticleMetadata): SystemSpec {
   }
 
   const rimRadius = (belt?.outerRadius ?? FIRST_ORBIT + (bodies.length - 1) * ORBIT_SPACING) + 160;
-  const gates = generateGates(meta.links, root.fork('gates'), rimRadius, false);
+  const gates = generateGates(meta.links, root.fork('gates'), rimRadius);
 
   const hazard =
     star.class === 'pulsar' ? 'radiation' : (belt?.density ?? 0) > 0.6 ? 'debris' : undefined;
 
   return {
     schemaVersion: 1,
-    seed: seedHex,
-    sourceTitle: title,
-    name,
+    seed: ctx.seedHex,
+    sourceTitle: ctx.title,
+    name: ctx.name,
     kind: 'standard',
     star,
     bodies,
     gates,
     ...(belt ? { belt } : {}),
-    ambient: { ...ambientBase, ...(hazard ? { hazard } : {}) },
-    traffic,
+    ambient: { ...ctx.ambientBase, ...(hazard ? { hazard } : {}) },
+    traffic: ctx.traffic,
   };
+}
+
+// --- entry point ---------------------------------------------------------------
+
+export function generateSystem(meta: ArticleMetadata): SystemSpec {
+  const title = normalizeTitle(meta.title);
+  const seed = systemSeed(title);
+  const seedHex = seedToHex(seed);
+  const root = new Rng(seed);
+  const ctx: GenContext = {
+    title,
+    seedHex,
+    name: systemName(title),
+    traffic: trafficFor(meta),
+    ambientBase: {
+      paletteId: paletteIdFor(meta.categories),
+      nebulaSeed: seedToHex(hash128(`${seedHex}/nebula`)),
+    },
+  };
+
+  if (meta.isDisambiguation) {
+    // Shattered system (§4.3): no star, debris everywhere, every entry a
+    // gate. Precedence over the stub rule — a tiny disambig page shatters.
+    const debris = root.fork('belt');
+    return {
+      schemaVersion: 1,
+      seed: seedHex,
+      sourceTitle: title,
+      name: ctx.name,
+      kind: 'shattered',
+      star: null,
+      bodies: [],
+      gates: generateGates(meta.links, root.fork('gates'), 520, { all: true }),
+      belt: {
+        innerRadius: roundTo(debris.range(60, 120)),
+        outerRadius: roundTo(debris.range(380, 470)),
+        density: roundTo(debris.range(0.6, 0.9)),
+      },
+      ambient: { ...ctx.ambientBase, hazard: 'debris' },
+      traffic: ctx.traffic,
+    };
+  }
+
+  // §4.5: stub articles generate as their pre-rolled anomaly.
+  if (meta.byteLength < STUB_BYTES) return generateAnomaly(meta, root, ctx);
+
+  return generateStandard(meta, root, ctx);
 }

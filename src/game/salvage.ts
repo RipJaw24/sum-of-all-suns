@@ -4,9 +4,9 @@
  *
  * Derelicts are DERIVED world data: a pure, seeded function of the
  * SystemSpec, like renderer.ts's starfield — deliberately not stored in the
- * spec so M2 doesn't churn the golden files. M3's anomaly pass can promote
- * them into SystemSpec proper (and add the §4.5 isolation-scaled yields,
- * which need inbound-link data we don't snapshot yet).
+ * spec so yield tuning never churns the golden files. M3: yields scale with
+ * SystemSpec.salvageRichness, the §4.5 isolation lever — the most isolated
+ * stubs pay the best.
  *
  * Looting state ("which derelicts are emptied") is run state — run.ts
  * `looted` keys — never written here.
@@ -34,7 +34,11 @@ export function derelictsFor(spec: SystemSpec): Derelict[] {
   if (spec.kind !== 'salvage_field') return [];
   const rng = new Rng(hash128(`${spec.seed}/derelicts`));
   const rim = spec.gates[0]?.rimRadius ?? 520;
-  const count = rng.int(2, 5);
+  // §4.5 isolation lever: richness multiplies yields (and adds a wreck at
+  // the top end) AFTER the draws, so tuning never shifts the rng stream.
+  const richness = spec.salvageRichness ?? 0.5;
+  const mult = 0.75 + richness;
+  const count = rng.int(2, 5) + (richness > 0.7 ? 1 : 0);
   return Array.from({ length: count }, (_, i) => {
     const angle = rng.angle();
     const radius = rng.range(rim * 0.25, rim * 0.85);
@@ -42,8 +46,8 @@ export function derelictsFor(spec: SystemSpec): Derelict[] {
       id: `derelict:${i}`,
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius,
-      fuel: rng.int(DERELICT_FUEL_MIN, DERELICT_FUEL_MAX + 1),
-      credits: rng.int(DERELICT_CREDITS_MIN, DERELICT_CREDITS_MAX + 1),
+      fuel: Math.round(rng.int(DERELICT_FUEL_MIN, DERELICT_FUEL_MAX + 1) * mult),
+      credits: Math.round(rng.int(DERELICT_CREDITS_MIN, DERELICT_CREDITS_MAX + 1) * mult),
     };
   });
 }

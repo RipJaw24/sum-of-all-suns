@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "seed": "e1e012cff20364f6969445778577334e",
+  "sourceTitle": "Oxbow lake",
+  "name": "Stroustrul Deke Minor",
+  "kind": "salvage_field",
+  "star": {
+    "class": "red_dwarf",
+    "radius": 17.1,
+    "color": "#e8553f",
+    "hazardRadius": 0
+  },
+  "bodies": [
+    {
+      "id": "body:0",
+      "name": "Stroustrul Deke Minor I",
+      "type": "rocky",
+      "radius": 12.648,
+      "orbitRadius": 142.339,
+      "orbitPeriodSec": 320.236,
+      "initialAngle": 0.597,
+      "hasRings": false,
+      "moons": [],
+      "site": {
+        "goodIds": [],
+        "loreSeed": "5a8051d1139c5164d211d5179b0dd5a2"
+      }
+    },
+    {
+      "id": "body:1",
+      "name": "Stroustrul Deke Minor II",
+      "type": "ice",
+      "radius": 13.747,
+      "orbitRadius": 253.057,
+      "orbitPeriodSec": 442.725,
+      "initialAngle": 2.103,
+      "hasRings": false,
+      "moons": [],
+      "site": {
+        "goodIds": [],
+        "loreSeed": "0efe0c3eee5848006775348087d370be"
+      }
+    },
+    {
+      "id": "body:2",
+      "name": "Stroustrul Deke Minor III",
+      "type": "ice",
+      "radius": 12.057,
+      "orbitRadius": 327.526,
+      "orbitPeriodSec": 671.8,
+      "initialAngle": 0.619,
+      "hasRings": false,
+      "moons": [],
+      "site": {
+        "goodIds": [],
+        "loreSeed": "cde2d4815f0188793ab8492ba85b15d3"
+      }
+    }
+  ],
+  "gates": [
+    {
+      "id": "gate:0",
+      "destinationTitle": "Meander",
+      "destinationName": "Vor Prou Major",
+      "kind": "charted",
+      "angle": 5.263,
+      "rimRadius": 500,
+      "fuelCostFactor": 1
+    },
+    {
+      "id": "gate:1",
+      "destinationTitle": "Billabong",
+      "destinationName": "Lymy Krunu",
+      "kind": "charted",
+      "angle": 2.088,
+      "rimRadius": 500,
+      "fuelCostFactor": 1.15
+    }
+  ],
+  "ambient": {
+    "paletteId": 0,
+    "nebulaSeed": "39075b4b80755de815f82ff5ac8a2956"
+  },
+  "traffic": 0.364,
+  "salvageRichness": 0.78
+}
