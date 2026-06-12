@@ -189,6 +189,9 @@ function glowTexture(color: string): Texture {
   return Texture.from(canvas);
 }
 
+/** Starfield camera factor: between nebula (0.15×) and playfield (1×). */
+const STARFIELD_PARALLAX = 0.3;
+
 interface StarNode {
   root: Container;
   baseRadius: number;
@@ -207,6 +210,8 @@ interface GasGiantNode {
   clouds: TilingSprite;
   bandSpeed: number;
   cloudSpeed: number;
+  /** Axis tilt in radians; rings share it so they sit on the equator. */
+  tilt: number;
 }
 
 interface GateNode {
@@ -219,6 +224,7 @@ export class Renderer {
   private readonly nebula = new NebulaLayer();
   private readonly nebulaLayer = new Container();
   private readonly world = new Container();
+  /** Distant stars: screen-space layer between nebula (0.15×) and world (1×). */
   private readonly starfield = new Graphics();
   private readonly orbits = new Graphics();
   private readonly starLayer = new Container();
@@ -238,7 +244,6 @@ export class Renderer {
     private readonly overlay: CanvasRenderingContext2D,
   ) {
     this.world.addChild(
-      this.starfield,
       this.orbits,
       this.starLayer,
       this.bodyLayer,
@@ -247,7 +252,7 @@ export class Renderer {
       this.ship,
     );
     this.nebulaLayer.addChild(this.nebula.mesh);
-    app.stage.addChild(this.nebulaLayer, this.world);
+    app.stage.addChild(this.nebulaLayer, this.starfield, this.world);
 
     this.ship
       .poly([12, 0, -8, 7, -4, 0, -8, -7])
@@ -321,6 +326,10 @@ export class Renderer {
     this.syncDerelicts(derelicts);
 
     this.world.position.set(width / 2 - ship.x, height / 2 - ship.y);
+    this.starfield.position.set(
+      width / 2 - ship.x * STARFIELD_PARALLAX,
+      height / 2 - ship.y * STARFIELD_PARALLAX,
+    );
     this.nebula.frame(ship.x, ship.y, width, height);
 
     // Pulsar strobe (§3.1 rare stars).
@@ -366,11 +375,12 @@ export class Renderer {
     const extent = rim + 900;
     const rng = new Rng(hash128(`${spec.seed}/starfield`));
     this.starfield.clear();
-    for (let i = 0; i < 500; i++) {
+    for (let i = 0; i < 1100; i++) {
       const x = rng.range(-extent, extent);
       const y = rng.range(-extent, extent);
-      const r = rng.range(0.4, 1.6);
-      const alpha = rng.range(0.25, 0.9);
+      // Power-law size bias: most stars stay sub-pixel, a rare few reach ~3px.
+      const r = 0.4 + rng.float() ** 3 * 2.6;
+      const alpha = rng.range(0.2, 0.55) + (r / 3) * 0.4;
       this.starfield.rect(x, y, r, r).fill({ color: 0xcdd6f4, alpha });
     }
   }
@@ -448,7 +458,7 @@ export class Renderer {
         const rings = new Graphics()
           .ellipse(0, 0, body.radius * 1.9, body.radius * 0.6)
           .stroke({ width: 2, color: 0xdcd2b4, alpha: 0.5 });
-        rings.rotation = 0.4;
+        rings.rotation = gas ? gas.tilt : 0.4;
         root.addChild(rings);
       }
 
@@ -479,28 +489,34 @@ export class Renderer {
   private makeGasGiant(body: BodySpec, seed: string): GasGiantNode {
     const diameter = body.radius * 2;
     const rng = new Rng(hash128(`${seed}/gas:${body.id}:motion`));
+    const tilt = rng.range(-0.5, 0.5);
     const root = new Container();
     const tileScale = {
       x: (body.radius * 4) / GAS_TEXTURE_SIZE,
       y: diameter / (GAS_TEXTURE_SIZE / 2),
     };
+    // +4px bleed: the rotated square only just covers the inscribed circle,
+    // and AA at the tangent points can show seams without it.
     const bands = new TilingSprite({
       texture: gasBandTexture(seed, body),
-      width: diameter,
-      height: diameter,
+      width: diameter + 4,
+      height: diameter + 4,
       anchor: 0.5,
       applyAnchorToTexture: true,
       tileScale,
     });
     const clouds = new TilingSprite({
       texture: gasCloudTexture(seed, body),
-      width: diameter,
-      height: diameter,
+      width: diameter + 4,
+      height: diameter + 4,
       anchor: 0.5,
       applyAnchorToTexture: true,
       tileScale,
     });
     clouds.alpha = 0.62;
+    const spin = new Container();
+    spin.rotation = tilt;
+    spin.addChild(bands, clouds);
 
     const shade = new Sprite(sphereShadeTexture());
     shade.anchor.set(0.5);
@@ -512,7 +528,7 @@ export class Renderer {
       .stroke({ width: 1.5, color: 0xf4e8cf, alpha: 0.32 });
     const mask = new Graphics().circle(0, 0, body.radius).fill(0xffffff);
     root.mask = mask;
-    root.addChild(bands, clouds, shade, rim, mask);
+    root.addChild(spin, shade, rim, mask);
 
     return {
       root,
@@ -520,6 +536,7 @@ export class Renderer {
       clouds,
       bandSpeed: rng.range(3, 8) * (rng.chance(0.5) ? 1 : -1),
       cloudSpeed: rng.range(9, 18) * (rng.chance(0.5) ? 1 : -1),
+      tilt,
     };
   }
 
