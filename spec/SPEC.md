@@ -29,7 +29,7 @@ Spawn in a start system
    → repeat until death (fuel-out, hazard) or run goal reached
 ```
 
-**Run goal options** (pick one for MVP): reach a specific distant system ("find your way home"); survive N jumps; or chart a route between two named articles (a literal "Wiki race" without ever saying so).
+**Run goal (decided for MVP): survive N jumps.** Gives every run a natural ending and a victory variant of the Decrypt Flight Log. Other options considered — reach a distant system ("find your way home"); chart a route between two named articles (a literal "Wiki race" without ever saying so) — remain candidates for later modes. Longer-term, movement pressure should come from a diegetic threat instead of a jump counter: a system-eating cosmic badness that detonates stars behind the player (see §12).
 
 ---
 
@@ -201,7 +201,7 @@ Raw Canvas2D is acceptable for M0; adopt PixiJS when nebula shaders and particle
 
 **M3 — Texture:** trade goods, lore fragments, anomaly systems (disambig/redirect/uncharted rules), nebula backgrounds per palette, audio. First combat pass (pirates in high-traffic systems) if M2 lands early.
 
-**M4 — Polish & secret-keeping audit:** playtest specifically for "can anyone tell it's Wikipedia?", balance fuel economy, offline pack, ship it.
+**M4 — Shell, goal & ship (rebuilt 2026-06):** main menu + pause shell (title screen with New Run / Continue / Controls; Esc pause with Abandon Run); run goal — survive N jumps, with a victory variant of the Decrypt Flight Log; minimal synthesized Web Audio SFX (deferred from M3; no asset files); fail-early no-network UX on new-run start (**offline article pack: cut** — snapshot cache + degraded fallback already cover mid-run failures; a fresh run with no API access should error clearly, not silently degrade); secret-keeping playtest ("can anyone tell it's Wikipedia?"); balance fuel economy / trade / salvage / hazards; production build + acceptance script, ship it.
 
 ---
 
@@ -215,6 +215,9 @@ Raw Canvas2D is acceptable for M0; adopt PixiJS when nebula shaders and particle
 
 ## 12. Deferred / Later
 
-- Combat layer (pirates, patrols, weapons) — M3+
+- Combat layer (pirates, patrols, weapons) — post-v1
 - Meta-progression (persistent star chart, ship unlocks)
 - Language-edition galaxies — parked
+- **The Erasure (working name)** — a system-eating cosmic threat that advances through the galaxy detonating stars behind the player, replacing the survive-N jump counter as the source of movement pressure. Post-decrypt punchline writes itself: the thing eating the sum of all knowledge is *deletion*. Post-v1.
+- Offline article pack — cut from M4 (2026-06); revisit only if a zero-network demo build is ever needed
+- Image export of the decrypted constellation (text export shipped in M2)
