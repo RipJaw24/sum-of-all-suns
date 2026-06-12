@@ -113,6 +113,23 @@ export class ArticleCache {
     }
   }
 
+  /**
+   * Like get(), but REJECTS instead of degrading when the article isn't
+   * cached and the fetch fails. M4 fail-early rule: a NEW run must start
+   * from real metadata — no-network at run start is a clear error in the
+   * menu, never a silently degraded galaxy. Mid-run lookups keep using
+   * get()'s degraded fallback. Bypasses the in-flight map so it can't be
+   * handed a degraded result from a concurrent lenient lookup.
+   */
+  async getStrict(rawTitle: string): Promise<CachedArticle> {
+    const title = normalizeTitle(rawTitle);
+    const cached = await this.store.get(title);
+    if (cached) return { meta: cached, source: 'cache' };
+    const meta = await this.fetcher(title);
+    await this.store.put(meta);
+    return { meta, source: 'network' };
+  }
+
   /** Fire-and-forget warm-up for gate destinations (§8: jump never stalls). */
   prefetch(titles: readonly string[]): void {
     for (const title of titles) void this.get(title);

@@ -17,6 +17,8 @@ export const FUEL_MAX = 100;
 export const BASE_JUMP_FUEL = 8;
 /** M3 trade: total units of goods the ship can carry. */
 export const CARGO_MAX = 10;
+/** M4 run goal (§2): survive this many jumps. Tunable; ?goal= overrides. */
+export const DEFAULT_GOAL_JUMPS = 15;
 
 const TAU = Math.PI * 2;
 
@@ -26,10 +28,10 @@ export interface RouteEntry {
   via: 'start' | GateKind;
 }
 
-export type DeathCause = 'hull' | 'adrift';
+export type DeathCause = 'hull' | 'adrift' | 'abandoned';
 
 export interface RunState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   /** Article title of the system the player is in. SPOILER. */
   currentTitle: string;
   /** Where we jumped here from; drives the §4.2 return gate. */
@@ -44,15 +46,17 @@ export interface RunState {
   /** One-time pickup/event keys ("<title>/<id>"): mined bodies, emptied
    *  derelicts, hazard-pocket entry hits. See lootKey(). */
   looted: string[];
-  status: 'active' | 'dead';
+  status: 'active' | 'dead' | 'won';
   deathCause?: DeathCause;
   route: RouteEntry[];
+  /** M4 run goal: jumps to survive for victory (§2). */
+  goalJumps: number;
 }
 
-export function newRun(startTitle: string): RunState {
+export function newRun(startTitle: string, goalJumps: number = DEFAULT_GOAL_JUMPS): RunState {
   const title = normalizeTitle(startTitle);
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     currentTitle: title,
     fuel: FUEL_MAX,
     fuelMax: FUEL_MAX,
@@ -63,14 +67,19 @@ export function newRun(startTitle: string): RunState {
     looted: [],
     status: 'active',
     route: [{ title, via: 'start' }],
+    goalJumps: Math.max(1, Math.round(goalJumps)),
   };
+}
+
+export function jumpsMade(run: RunState): number {
+  return run.route.length - 1;
 }
 
 // --- §7 resources: hull, credits, fuel, loot -------------------------------
 
 /** Apply hull damage. Returns true when this hit ends the run. */
 export function damageHull(run: RunState, amount: number): boolean {
-  if (run.status === 'dead') return false;
+  if (run.status !== 'active') return false;
   run.hull = Math.max(0, run.hull - amount);
   if (run.hull <= 0) {
     run.status = 'dead';
@@ -128,6 +137,14 @@ export function declareAdrift(run: RunState): void {
   run.deathCause = 'adrift';
 }
 
+/** M4 pause menu's Abandon Run: ends the run but keeps the flight log —
+ *  abandonment still earns its Decrypt (summary.ts), it isn't a save-wipe. */
+export function declareAbandoned(run: RunState): void {
+  if (run.status !== 'active') return;
+  run.status = 'dead';
+  run.deathCause = 'abandoned';
+}
+
 export function lootKey(title: string, id: string): string {
   return `${normalizeTitle(title)}/${id}`;
 }
@@ -148,7 +165,7 @@ export function markLooted(run: RunState, title: string, id: string): void {
  * silently, so the player understands why the run ended.
  */
 export function isStranded(run: RunState, gates: readonly GateSpec[], spec: SystemSpec): boolean {
-  if (run.status === 'dead') return false;
+  if (run.status !== 'active') return false;
   if (gates.length === 0) return true;
   const cheapest = Math.min(...gates.map(jumpCost));
   if (run.fuel >= cheapest) return false;
@@ -182,12 +199,15 @@ export function canJump(run: RunState, gate: GateSpec): boolean {
   return run.fuel >= jumpCost(gate);
 }
 
-/** Commit a jump: spend fuel, move, extend the route log. */
+/** Commit a jump: spend fuel, move, extend the route log. Completing the
+ *  goalJumps-th jump wins the run (§2 survive-N) — the arrival still plays
+ *  out; main.ts routes to the victory summary after the fade-in. */
 export function applyJump(run: RunState, gate: GateSpec): void {
   run.fuel = Math.max(0, run.fuel - jumpCost(gate));
   run.previousTitle = run.currentTitle;
   run.currentTitle = gate.destinationTitle;
   run.route.push({ title: gate.destinationTitle, via: gate.kind });
+  if (run.status === 'active' && jumpsMade(run) >= run.goalJumps) run.status = 'won';
 }
 
 // --- §4.2 bidirectionality ----------------------------------------------------
@@ -243,18 +263,26 @@ export function gatesFor(spec: SystemSpec, arrivedFrom: string | undefined): Gat
 
 // v2: M2 added hull/credits/looted/status. v1 saves were discarded (prototype
 // phase). v3: M3 added the cargo hold — v2 saves migrate in place (cargo: {}).
-const RUN_KEY = 'sas:run:v3';
+// v4: M4 added goalJumps + the 'won' status — v2/v3 saves migrate in place.
+const RUN_KEY = 'sas:run:v4';
+const RUN_KEY_V3 = 'sas:run:v3';
 const RUN_KEY_V2 = 'sas:run:v2';
 
 export function saveRun(run: RunState, storage: Storage = localStorage): void {
   storage.setItem(RUN_KEY, JSON.stringify(run));
 }
 
-/** Upgrade a v2 save to v3. Returns null for anything else. */
-function migrateV2(raw: string): RunState | null {
+/** Upgrade a v2 or v3 save to v4. Returns null for anything else. */
+function migrateLegacy(raw: string): RunState | null {
   const run = JSON.parse(raw);
-  if (run?.schemaVersion !== 2 || typeof run.currentTitle !== 'string') return null;
-  return { ...run, schemaVersion: 3, cargo: {} } as RunState;
+  if (typeof run?.currentTitle !== 'string') return null;
+  if (run.schemaVersion === 2) {
+    return { ...run, schemaVersion: 4, cargo: {}, goalJumps: DEFAULT_GOAL_JUMPS } as RunState;
+  }
+  if (run.schemaVersion === 3) {
+    return { ...run, schemaVersion: 4, goalJumps: DEFAULT_GOAL_JUMPS } as RunState;
+  }
+  return null;
 }
 
 export function loadRun(storage: Storage = localStorage): RunState | null {
@@ -262,16 +290,21 @@ export function loadRun(storage: Storage = localStorage): RunState | null {
     const raw = storage.getItem(RUN_KEY);
     if (raw) {
       const run = JSON.parse(raw);
-      return run?.schemaVersion === 3 && typeof run.currentTitle === 'string'
+      return run?.schemaVersion === 4 && typeof run.currentTitle === 'string'
         ? (run as RunState)
         : null;
     }
-    const old = storage.getItem(RUN_KEY_V2);
-    if (!old) return null;
-    const migrated = migrateV2(old);
-    storage.removeItem(RUN_KEY_V2);
-    if (migrated) saveRun(migrated, storage);
-    return migrated;
+    for (const key of [RUN_KEY_V3, RUN_KEY_V2]) {
+      const old = storage.getItem(key);
+      if (!old) continue;
+      const migrated = migrateLegacy(old);
+      storage.removeItem(key);
+      if (migrated) {
+        saveRun(migrated, storage);
+        return migrated;
+      }
+    }
+    return null;
   } catch {
     return null;
   }

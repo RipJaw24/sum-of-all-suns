@@ -10,11 +10,11 @@ import { newRun, type RunState } from './run';
 import {
   decryptProgress,
   DECRYPT_STAGGER_SEC,
-  deathTitle,
   layoutRoute,
   routeText,
   scrambledTitle,
   statsLine,
+  summaryTitle,
 } from './summary';
 
 function deadRun(): RunState {
@@ -96,12 +96,23 @@ describe('routeText (share/export)', () => {
     expect(text).toContain('3. Byzantine Empire  [wormhole]');
   });
 
-  it('death cause and stats are included', () => {
+  it('outcome and stats are included', () => {
     const run = deadRun();
-    expect(deathTitle(run)).toContain('HULL BREACH');
+    expect(summaryTitle(run)).toContain('HULL BREACH');
     run.deathCause = 'adrift';
-    expect(deathTitle(run)).toContain('ADRIFT');
+    expect(summaryTitle(run)).toContain('ADRIFT');
+    run.deathCause = 'abandoned';
+    expect(summaryTitle(run)).toContain('ABANDONED');
     expect(statsLine(run)).toContain('2 jumps');
     expect(statsLine(run)).toContain('3 systems');
+  });
+
+  it('a won run gets the victory header (M4 survive-N)', () => {
+    const run = deadRun();
+    run.status = 'won';
+    run.goalJumps = 2;
+    delete run.deathCause;
+    expect(summaryTitle(run)).toBe('RUN COMPLETE — SURVIVED 2 JUMPS');
+    expect(routeText(run, true)).toContain('RUN COMPLETE');
   });
 });

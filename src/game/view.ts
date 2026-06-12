@@ -37,6 +37,8 @@ export interface HudState {
   cargo: number;
   cargoMax: number;
   jumps: number;
+  /** M4 survive-N goal: jumps needed for victory (§2). */
+  goalJumps: number;
   prompt: HudPrompt | null;
   /** Secondary hint under the main prompt (e.g. '[Q] scan …'). */
   subPrompt?: string;

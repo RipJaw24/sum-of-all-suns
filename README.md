@@ -69,6 +69,7 @@ npm run typecheck  # tsc --noEmit
 npx vite-node scripts/verify-jump.ts   # M1: jump + offline cache proof
 npx vite-node scripts/verify-m2.ts     # M2: hull/credits/docking/death/decrypt
 npx vite-node scripts/verify-m3.ts     # M3: trade/lore/anomalies/nebula
+npx vite-node scripts/verify-m4.ts     # M4: menu/pause/fail-early/survive-N victory
 npx vite-node scripts/screenshot.ts    # Visual inspection screenshot
 ```
 

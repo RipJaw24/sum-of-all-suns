@@ -59,6 +59,28 @@ describe('ArticleCache', () => {
     expect(isDegraded(recovered.meta)).toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it('getStrict rejects on fetch failure instead of degrading (M4 fail-early)', async () => {
+    let fail = true;
+    const fetcher = vi.fn(async (t: string) => {
+      if (fail) throw new Error('network down');
+      return meta(t);
+    });
+    const store = new MemoryArticleStore();
+    const cache = new ArticleCache(store, fetcher);
+
+    await expect(cache.getStrict('Granum')).rejects.toThrow('network down');
+    expect(await store.get('Granum')).toBeUndefined(); // nothing persisted
+
+    fail = false;
+    const fetched = await cache.getStrict('Granum');
+    expect(fetched.source).toBe('network');
+
+    fail = true; // snapshot now covers it — strict reads work offline
+    const cached = await cache.getStrict('granum');
+    expect(cached.source).toBe('cache');
+    expect(cached.meta.title).toBe('Granum');
+  });
 });
 
 describe('degradedMetadata', () => {

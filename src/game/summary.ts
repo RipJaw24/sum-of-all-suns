@@ -91,8 +91,19 @@ const VIA_TAG: Record<RouteEntry['via'], string> = {
   wormhole: 'wormhole',
 };
 
-export function deathTitle(run: RunState): string {
-  return run.deathCause === 'adrift' ? 'RUN OVER — ADRIFT, FUEL EXHAUSTED' : 'RUN OVER — HULL BREACH';
+/** Header line for the run's outcome — death, abandonment, or M4 victory. */
+export function summaryTitle(run: RunState): string {
+  if (run.status === 'won') {
+    return `RUN COMPLETE — SURVIVED ${run.goalJumps} JUMP${run.goalJumps === 1 ? '' : 'S'}`;
+  }
+  switch (run.deathCause) {
+    case 'adrift':
+      return 'RUN OVER — ADRIFT, FUEL EXHAUSTED';
+    case 'abandoned':
+      return 'RUN ABANDONED';
+    default:
+      return 'RUN OVER — HULL BREACH';
+  }
 }
 
 export function statsLine(run: RunState): string {
@@ -105,7 +116,7 @@ export function statsLine(run: RunState): string {
 export function routeText(run: RunState, decrypted: boolean): string {
   const lines = [
     `SUM OF ALL SUNS — FLIGHT LOG${decrypted ? ' [DECRYPTED]' : ''}`,
-    deathTitle(run),
+    summaryTitle(run),
     statsLine(run),
     '',
   ];
@@ -148,9 +159,9 @@ export function drawSummary(
   ctx.fillRect(0, 0, width, height);
 
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#ff6b4a';
+  ctx.fillStyle = run.status === 'won' ? '#9ee887' : '#ff6b4a';
   ctx.font = '22px monospace';
-  ctx.fillText(deathTitle(run), width / 2, 64);
+  ctx.fillText(summaryTitle(run), width / 2, 64);
   ctx.fillStyle = 'rgba(205, 214, 244, 0.7)';
   ctx.font = '13px monospace';
   ctx.fillText(statsLine(run), width / 2, 90);

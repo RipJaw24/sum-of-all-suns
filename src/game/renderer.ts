@@ -623,7 +623,7 @@ export class Renderer {
     ctx.fillText(spec.name, 16, 28);
     ctx.font = '12px monospace';
     ctx.fillStyle = 'rgba(205, 214, 244, 0.55)';
-    ctx.fillText(`${spec.kind} system · jumps ${hud.jumps} · [TAB] chart`, 16, 46);
+    ctx.fillText(`${spec.kind} system · jumps ${hud.jumps}/${hud.goalJumps} · [TAB] chart`, 16, 46);
 
     const bar = (y: number, frac: number, color: string, label: string) => {
       ctx.fillStyle = 'rgba(205, 214, 244, 0.25)';

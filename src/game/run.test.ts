@@ -1,6 +1,7 @@
 /**
- * run.test.ts — fuel math (§7), route log, the §4.2 return-gate rule, and
- * the M2 additions: hull, credits, loot keys, stranding, persistence v2.
+ * run.test.ts — fuel math (§7), route log, the §4.2 return-gate rule, the
+ * M2 additions (hull, credits, loot keys, stranding, persistence), and the
+ * M4 survive-N goal: victory on the Nth jump, abandonment, v4 migration.
  */
 import { describe, expect, it } from 'vitest';
 import { generateSystem } from '../gen/generate';
@@ -12,6 +13,7 @@ import { priceFor } from './market';
 import {
   BASE_JUMP_FUEL,
   CARGO_MAX,
+  DEFAULT_GOAL_JUMPS,
   FUEL_MAX,
   RETURN_GATE_ID,
   addCargo,
@@ -21,11 +23,13 @@ import {
   canJump,
   cargoCount,
   damageHull,
+  declareAbandoned,
   declareAdrift,
   gatesFor,
   isLooted,
   isStranded,
   jumpCost,
+  jumpsMade,
   loadRun,
   markLooted,
   newRun,
@@ -123,26 +127,42 @@ describe('persistence', () => {
     saveRun(run, storage);
     expect(loadRun(storage)).toEqual(run);
 
-    storage.setItem('sas:run:v3', '{"nope":true}');
+    storage.setItem('sas:run:v4', '{"nope":true}');
     expect(loadRun(storage)).toBeNull();
 
     const old = fakeStorage();
+    old.setItem('sas:run:v3', '{"nope":true}');
     old.setItem('sas:run:v2', '{"nope":true}');
-    expect(loadRun(old)).toBeNull(); // garbage in the legacy key, too
+    expect(loadRun(old)).toBeNull(); // garbage in the legacy keys, too
   });
 
-  it('migrates a v2 save in place: cargo added, old key removed', () => {
+  it('migrates a v2 save in place: cargo + goal added, old key removed', () => {
     const storage = fakeStorage();
     const v2 = { ...newRun('Photosynthesis'), schemaVersion: 2 } as Record<string, unknown>;
     delete v2.cargo;
+    delete v2.goalJumps;
     storage.setItem('sas:run:v2', JSON.stringify(v2));
 
     const migrated = loadRun(storage)!;
-    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.schemaVersion).toBe(4);
     expect(migrated.cargo).toEqual({});
+    expect(migrated.goalJumps).toBe(DEFAULT_GOAL_JUMPS);
     expect(migrated.currentTitle).toBe('Photosynthesis');
     expect(storage.getItem('sas:run:v2')).toBeNull();
-    expect(loadRun(storage)).toEqual(migrated); // resaved under the v3 key
+    expect(loadRun(storage)).toEqual(migrated); // resaved under the v4 key
+  });
+
+  it('migrates a v3 save in place: goal added, old key removed', () => {
+    const storage = fakeStorage();
+    const v3 = { ...newRun('Photosynthesis'), schemaVersion: 3 } as Record<string, unknown>;
+    delete v3.goalJumps;
+    storage.setItem('sas:run:v3', JSON.stringify(v3));
+
+    const migrated = loadRun(storage)!;
+    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.goalJumps).toBe(DEFAULT_GOAL_JUMPS);
+    expect(storage.getItem('sas:run:v3')).toBeNull();
+    expect(loadRun(storage)).toEqual(migrated);
   });
 
   it('discards pre-M2 (v1) saves via the version guard', () => {
@@ -309,5 +329,52 @@ describe('isStranded (§7 fuel-out death)', () => {
     declareAdrift(run);
     expect(run.deathCause).toBe('adrift');
     expect(isStranded(run, [gate(1)], fakeSpec({}))).toBe(false);
+  });
+
+  it('a won run is never reported stranded', () => {
+    const run = brokeRun();
+    run.status = 'won';
+    expect(isStranded(run, [gate(1)], fakeSpec({}))).toBe(false);
+  });
+});
+
+// --- M4: survive-N goal & abandonment (§2) ------------------------------------
+
+describe('survive-N goal (M4 §2)', () => {
+  it('defaults to DEFAULT_GOAL_JUMPS and accepts an override', () => {
+    expect(newRun('Photosynthesis').goalJumps).toBe(DEFAULT_GOAL_JUMPS);
+    expect(newRun('Photosynthesis', 3).goalJumps).toBe(3);
+    expect(newRun('Photosynthesis', 0).goalJumps).toBe(1); // floor: a goal of 0 is meaningless
+  });
+
+  it('the Nth jump wins the run; earlier jumps do not', () => {
+    const run = newRun('Photosynthesis', 2);
+    const gate = standard.gates[0]!;
+    applyJump(run, gate);
+    expect(jumpsMade(run)).toBe(1);
+    expect(run.status).toBe('active');
+    applyJump(run, gate);
+    expect(jumpsMade(run)).toBe(2);
+    expect(run.status).toBe('won');
+  });
+
+  it('a won run takes no further hull damage', () => {
+    const run = newRun('Photosynthesis', 1);
+    applyJump(run, standard.gates[0]!);
+    expect(run.status).toBe('won');
+    expect(damageHull(run, 999)).toBe(false);
+    expect(run.hull).toBe(HULL_MAX);
+  });
+
+  it('abandoning ends an active run with its own cause, once', () => {
+    const run = newRun('Photosynthesis');
+    declareAbandoned(run);
+    expect(run.status).toBe('dead');
+    expect(run.deathCause).toBe('abandoned');
+
+    const won = newRun('Photosynthesis', 1);
+    applyJump(won, standard.gates[0]!);
+    declareAbandoned(won); // no-op on a decided run
+    expect(won.status).toBe('won');
   });
 });
