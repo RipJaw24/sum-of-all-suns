@@ -10,7 +10,7 @@
  * overlay modules paint after it in frame order, exactly as before.
  */
 
-import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite } from 'pixi.js';
 import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, StarSpec, SystemSpec } from '../types';
 import { NebulaLayer } from './nebula';
@@ -19,6 +19,160 @@ import type { ShipState } from './ship';
 import { BODY_COLORS, GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
 
 const LABEL_STYLE = { fontFamily: 'monospace', fontSize: 11, fill: 0xcdd6f4 } as const;
+const GAS_TEXTURE_SIZE = 256;
+const GAS_PALETTES: ReadonlyArray<readonly string[]> = [
+  ['#f4d3a2', '#d8955d', '#9a6048', '#fff0c4'],
+  ['#d7c7a6', '#a9967c', '#726f88', '#ecdfc1'],
+  ['#c6e3ef', '#7ea6c8', '#3f668e', '#f0fbff'],
+  ['#d9c4ec', '#b48bc9', '#765d92', '#f4e6ff'],
+  ['#dfc690', '#b77957', '#6e5143', '#f8e6b2'],
+] as const;
+
+interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+function hexToRgb(hex: string): Rgb {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function mixColor(a: Rgb, b: Rgb, t: number): Rgb {
+  return {
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+  };
+}
+
+function rgba(c: Rgb, alpha = 1): string {
+  return `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${alpha})`;
+}
+
+function gasPalette(seed: string, body: BodySpec): readonly Rgb[] {
+  const rng = new Rng(hash128(`${seed}/gas:${body.id}:palette`));
+  return rng.pick(GAS_PALETTES).map(hexToRgb);
+}
+
+function gasBandTexture(seed: string, body: BodySpec): Texture {
+  const size = GAS_TEXTURE_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size / 2;
+  const ctx = canvas.getContext('2d')!;
+  const rng = new Rng(hash128(`${seed}/gas:${body.id}:bands`));
+  const palette = gasPalette(seed, body);
+  const img = ctx.createImageData(canvas.width, canvas.height);
+  const waves = [
+    { amp: rng.range(0.04, 0.1), freq: rng.int(2, 5), phase: rng.angle() },
+    { amp: rng.range(0.015, 0.05), freq: rng.int(5, 10), phase: rng.angle() },
+  ];
+
+  for (let y = 0; y < canvas.height; y++) {
+    const lat = y / (canvas.height - 1);
+    const belt = Math.floor((lat + 0.03 * Math.sin(lat * Math.PI * 11 + rng.float())) * 11);
+    const a = palette[Math.abs(belt) % palette.length]!;
+    const b = palette[(Math.abs(belt) + 1) % palette.length]!;
+    for (let x = 0; x < canvas.width; x++) {
+      const lon = x / canvas.width;
+      const ripple =
+        waves[0]!.amp * Math.sin((lon * waves[0]!.freq + lat * 1.6) * Math.PI * 2 + waves[0]!.phase) +
+        waves[1]!.amp * Math.sin((lon * waves[1]!.freq - lat * 3.2) * Math.PI * 2 + waves[1]!.phase);
+      const thin = Math.abs(Math.sin((lat + ripple) * Math.PI * 23));
+      const tint = Math.min(1, Math.max(0, 0.35 + thin * 0.4 + ripple * 1.5));
+      const c = mixColor(a, b, tint);
+      const i = (y * canvas.width + x) * 4;
+      img.data[i] = c.r;
+      img.data[i + 1] = c.g;
+      img.data[i + 2] = c.b;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  for (let i = 0; i < 10; i++) {
+    const y = rng.range(8, canvas.height - 8);
+    const h = rng.range(1, 3);
+    ctx.fillStyle = rng.chance(0.5) ? 'rgba(255,255,255,0.11)' : 'rgba(45,30,45,0.13)';
+    ctx.fillRect(0, y, canvas.width, h);
+  }
+
+  if (rng.chance(0.55)) {
+    const storm = palette[palette.length - 1]!;
+    const x = rng.range(canvas.width * 0.25, canvas.width * 0.75);
+    const y = rng.range(canvas.height * 0.28, canvas.height * 0.7);
+    const rx = rng.range(14, 26);
+    const ry = rng.range(5, 10);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rng.range(-0.15, 0.15));
+    ctx.fillStyle = rgba(storm, 0.32);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.24)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  return Texture.from(canvas);
+}
+
+function gasCloudTexture(seed: string, body: BodySpec): Texture {
+  const size = GAS_TEXTURE_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size / 2;
+  const ctx = canvas.getContext('2d')!;
+  const rng = new Rng(hash128(`${seed}/gas:${body.id}:clouds`));
+
+  for (let i = 0; i < 28; i++) {
+    const y = rng.range(8, canvas.height - 8);
+    const amp = rng.range(2, 8);
+    const phase = rng.angle();
+    const freq = rng.range(0.015, 0.035);
+    ctx.beginPath();
+    for (let x = -8; x <= canvas.width + 8; x += 8) {
+      const yy = y + Math.sin(x * freq + phase) * amp;
+      if (x === -8) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.strokeStyle = `rgba(255, 255, 255, ${rng.range(0.08, 0.22)})`;
+    ctx.lineWidth = rng.range(1.2, 3.8);
+    ctx.stroke();
+  }
+
+  return Texture.from(canvas);
+}
+
+let gasShadeTexture: Texture | null = null;
+
+function sphereShadeTexture(): Texture {
+  if (gasShadeTexture) return gasShadeTexture;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  let g = ctx.createRadialGradient(size * 0.38, size * 0.34, size * 0.08, size / 2, size / 2, size * 0.56);
+  g.addColorStop(0, 'rgba(255,255,255,0.24)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.02)');
+  g.addColorStop(0.82, 'rgba(0,0,0,0.18)');
+  g.addColorStop(1, 'rgba(0,0,0,0.62)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  g = ctx.createLinearGradient(0, 0, size, size);
+  g.addColorStop(0, 'rgba(255,255,255,0.12)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.24)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  gasShadeTexture = Texture.from(canvas);
+  return gasShadeTexture;
+}
 
 /** Radial-gradient glow texture (star halos). Canvas-baked once per color. */
 function glowTexture(color: string): Texture {
@@ -44,6 +198,15 @@ interface BodyNode {
   root: Container;
   body: BodySpec;
   moons: Graphics[];
+  gas?: GasGiantNode;
+}
+
+interface GasGiantNode {
+  root: Container;
+  bands: TilingSprite;
+  clouds: TilingSprite;
+  bandSpeed: number;
+  cloudSpeed: number;
 }
 
 interface GateNode {
@@ -168,6 +331,10 @@ export class Renderer {
     for (const node of this.bodyNodes) {
       const pos = bodyPosition(node.body, t);
       node.root.position.set(pos.x, pos.y);
+      if (node.gas) {
+        node.gas.bands.tilePosition.x = t * node.gas.bandSpeed;
+        node.gas.clouds.tilePosition.x = t * node.gas.cloudSpeed;
+      }
       node.body.moons.forEach((moon, i) => {
         const ma = moon.initialAngle + ((Math.PI * 2) / moon.orbitPeriodSec) * t;
         node.moons[i]!.position.set(Math.cos(ma) * moon.orbitRadius, Math.sin(ma) * moon.orbitRadius);
@@ -269,8 +436,13 @@ export class Renderer {
     this.bodyNodes = [];
     for (const body of spec.bodies) {
       const root = new Container();
-      const core = new Graphics().circle(0, 0, body.radius).fill(BODY_COLORS[body.type]);
-      root.addChild(core);
+      const gas = body.type === 'gas_giant' ? this.makeGasGiant(body, spec.seed) : undefined;
+      if (gas) {
+        root.addChild(gas.root);
+      } else {
+        const core = new Graphics().circle(0, 0, body.radius).fill(BODY_COLORS[body.type]);
+        root.addChild(core);
+      }
 
       if (body.hasRings) {
         const rings = new Graphics()
@@ -300,8 +472,55 @@ export class Renderer {
       root.addChild(label);
 
       this.bodyLayer.addChild(root);
-      this.bodyNodes.push({ root, body, moons });
+      this.bodyNodes.push({ root, body, moons, ...(gas ? { gas } : {}) });
     }
+  }
+
+  private makeGasGiant(body: BodySpec, seed: string): GasGiantNode {
+    const diameter = body.radius * 2;
+    const rng = new Rng(hash128(`${seed}/gas:${body.id}:motion`));
+    const root = new Container();
+    const tileScale = {
+      x: (body.radius * 4) / GAS_TEXTURE_SIZE,
+      y: diameter / (GAS_TEXTURE_SIZE / 2),
+    };
+    const bands = new TilingSprite({
+      texture: gasBandTexture(seed, body),
+      width: diameter,
+      height: diameter,
+      anchor: 0.5,
+      applyAnchorToTexture: true,
+      tileScale,
+    });
+    const clouds = new TilingSprite({
+      texture: gasCloudTexture(seed, body),
+      width: diameter,
+      height: diameter,
+      anchor: 0.5,
+      applyAnchorToTexture: true,
+      tileScale,
+    });
+    clouds.alpha = 0.62;
+
+    const shade = new Sprite(sphereShadeTexture());
+    shade.anchor.set(0.5);
+    shade.width = diameter;
+    shade.height = diameter;
+
+    const rim = new Graphics()
+      .circle(0, 0, body.radius)
+      .stroke({ width: 1.5, color: 0xf4e8cf, alpha: 0.32 });
+    const mask = new Graphics().circle(0, 0, body.radius).fill(0xffffff);
+    root.mask = mask;
+    root.addChild(bands, clouds, shade, rim, mask);
+
+    return {
+      root,
+      bands,
+      clouds,
+      bandSpeed: rng.range(3, 8) * (rng.chance(0.5) ? 1 : -1),
+      cloudSpeed: rng.range(9, 18) * (rng.chance(0.5) ? 1 : -1),
+    };
   }
 
   private buildGates(): void {
