@@ -113,6 +113,12 @@ export class Renderer {
     return this.app.renderer.name;
   }
 
+  /** RGBA snapshot of the GL stage (verify scripts; the canvas itself reads
+   *  blank without preserveDrawingBuffer — extract is the supported path). */
+  extractPixels(): { pixels: Uint8ClampedArray; width: number; height: number } {
+    return this.app.renderer.extract.pixels(this.app.stage);
+  }
+
   resize(width: number, height: number): void {
     this.app.renderer.resize(width, height);
   }

@@ -37,8 +37,10 @@ Article titles are never shown — a syllable-grammar generator launders every n
 | W / ↑ | Main thrust |
 | S / ↓ | Retro-brake |
 | A/D / ←/→ | RCS strafe |
-| E / Space | Interact (dock, jump) when in range |
+| E / Space | Interact (dock, jump, mine, salvage) when in range |
+| Q | Scan nearby body (site panel + lore) |
 | Tab / M | System chart |
+| T, B, V | While docked: trade view, buy, sell |
 
 ---
 
@@ -65,6 +67,8 @@ npm run typecheck  # tsc --noEmit
 
 ```bash
 npx vite-node scripts/verify-jump.ts   # M1: jump + offline cache proof
+npx vite-node scripts/verify-m2.ts     # M2: hull/credits/docking/death/decrypt
+npx vite-node scripts/verify-m3.ts     # M3: trade/lore/anomalies/nebula
 npx vite-node scripts/screenshot.ts    # Visual inspection screenshot
 ```
 
@@ -76,8 +80,9 @@ Wikipedia APIs
          └─► wiki/cache.ts  — snapshot-on-first-visit (IndexedDB); offline-safe
               └─► gen/generate.ts — pure fn: ArticleMetadata → SystemSpec
                    └─► game/main.ts  — run state, jump flow, render loop
-                        ├─► game/renderer.ts — Canvas2D (PixiJS at M3)
-                        └─► game/map.ts      — system chart overlay
+                        ├─► game/renderer.ts — PixiJS (WebGL) world + nebula shader
+                        ├─► 2D overlay canvas — HUD, dock/trade, map, scan, summary
+                        └─► game/market.ts   — derived per-system goods prices
 ```
 
 **Core invariant:** `generate_system(meta)` is a pure function — same metadata in, byte-identical `SystemSpec` out, forever. Golden-file tests enforce this. The determinism is what makes the galaxy shared across all players.
@@ -93,14 +98,14 @@ Run state (fuel, route, visited gates) is kept strictly separate from `SystemSpe
 | **M0** | ✅ | Vite + TS project; fetch one article; `generate_system()` with golden tests; fly around on Canvas2D |
 | **M1** | ✅ | Jumping works end-to-end; snapshot cache; §4.2 return gates; fuel cost; system map |
 | **M2** | ✅ | Fuel/hull/credits; docking + refuel; death + run summary; **Decrypt Flight Log** |
-| **M3** | 🔲 | Trade goods; lore fragments; anomaly systems; nebula backgrounds; PixiJS |
+| **M3** | ✅ | Trade goods; lore fragments; anomaly systems; nebula backgrounds; PixiJS |
 | **M4** | 🔲 | Polish; secret-keeping audit; offline article pack; ship |
 
 ---
 
 ## Tech stack
 
-**TypeScript + Vite + Vitest** — chosen for agent ergonomics: strong compiler feedback, headless test loops in milliseconds, and a Playwright path for visual iteration. Raw Canvas2D for M0–M2; PixiJS for nebula shaders at M3.
+**TypeScript + Vite + Vitest + PixiJS** — chosen for agent ergonomics: strong compiler feedback, headless test loops in milliseconds, and a Playwright path for visual iteration. The world renders on PixiJS (WebGL, with a GLSL nebula shader); all text UI draws on a 2D overlay canvas above it.
 
 **Wikipedia APIs used:**
 - MediaWiki Action API (`en.wikipedia.org/w/api.php`) — article metadata, links, sections

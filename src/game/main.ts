@@ -32,7 +32,7 @@ import { Input } from './input';
 import { drawMap } from './map';
 import { Renderer } from './renderer';
 import { bodyPosition, gatePosition, type HudPrompt, type HudState } from './view';
-import { marketGoodIds } from './market';
+import { marketGoodIds, priceFor } from './market';
 import {
   CARGO_MAX,
   addCargo,
@@ -199,7 +199,18 @@ async function boot(): Promise<void> {
       console.log(`[debug] system "${spec.name}" is "${spec.sourceTitle}" (${source})`);
       console.table(gates.map((g) => ({ gate: g.id, kind: g.kind, article: g.destinationTitle })));
     }
-    Object.assign(debugState, { spec, gates, ship, run, source });
+    Object.assign(debugState, {
+      spec,
+      gates,
+      ship,
+      run,
+      source,
+      // verify-m3 hooks: live market prices and the (filtered) derelict list.
+      market: marketGoodIds(spec),
+      priceFor: (id: string) => priceFor(spec, id),
+      derelictsNow: () => derelicts,
+      extractPixels: () => renderer.extractPixels(),
+    });
   }
 
   function startNewRun(t: number): void {
