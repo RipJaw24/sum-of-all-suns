@@ -14,165 +14,28 @@ import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite }
 import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, StarSpec, SystemSpec } from '../types';
 import { NebulaLayer } from './nebula';
+import {
+  type Rgb,
+  type RingletSpec,
+  gasBandTexture,
+  gasCloudTexture,
+  iceTexture,
+  lavaTextures,
+  makeRingletSpecs,
+  mixColor,
+  moonShadeTexture,
+  oceanCloudTexture,
+  oceanTexture,
+  planetPalette,
+  rgbToNumber,
+  rockyTexture,
+  sphereShadeTexture,
+} from './planetTextures';
 import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
-import { BODY_COLORS, GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
+import { GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
 
 const LABEL_STYLE = { fontFamily: 'monospace', fontSize: 11, fill: 0xcdd6f4 } as const;
-const GAS_TEXTURE_SIZE = 256;
-const GAS_PALETTES: ReadonlyArray<readonly string[]> = [
-  ['#f4d3a2', '#d8955d', '#9a6048', '#fff0c4'],
-  ['#d7c7a6', '#a9967c', '#726f88', '#ecdfc1'],
-  ['#c6e3ef', '#7ea6c8', '#3f668e', '#f0fbff'],
-  ['#d9c4ec', '#b48bc9', '#765d92', '#f4e6ff'],
-  ['#dfc690', '#b77957', '#6e5143', '#f8e6b2'],
-] as const;
-
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-function hexToRgb(hex: string): Rgb {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-
-function mixColor(a: Rgb, b: Rgb, t: number): Rgb {
-  return {
-    r: a.r + (b.r - a.r) * t,
-    g: a.g + (b.g - a.g) * t,
-    b: a.b + (b.b - a.b) * t,
-  };
-}
-
-function rgba(c: Rgb, alpha = 1): string {
-  return `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${alpha})`;
-}
-
-function gasPalette(seed: string, body: BodySpec): readonly Rgb[] {
-  const rng = new Rng(hash128(`${seed}/gas:${body.id}:palette`));
-  return rng.pick(GAS_PALETTES).map(hexToRgb);
-}
-
-function gasBandTexture(seed: string, body: BodySpec): Texture {
-  const size = GAS_TEXTURE_SIZE;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext('2d')!;
-  const rng = new Rng(hash128(`${seed}/gas:${body.id}:bands`));
-  const palette = gasPalette(seed, body);
-  const img = ctx.createImageData(canvas.width, canvas.height);
-  const waves = [
-    { amp: rng.range(0.04, 0.1), freq: rng.int(2, 5), phase: rng.angle() },
-    { amp: rng.range(0.015, 0.05), freq: rng.int(5, 10), phase: rng.angle() },
-  ];
-
-  for (let y = 0; y < canvas.height; y++) {
-    const lat = y / (canvas.height - 1);
-    const belt = Math.floor((lat + 0.03 * Math.sin(lat * Math.PI * 11 + rng.float())) * 11);
-    const a = palette[Math.abs(belt) % palette.length]!;
-    const b = palette[(Math.abs(belt) + 1) % palette.length]!;
-    for (let x = 0; x < canvas.width; x++) {
-      const lon = x / canvas.width;
-      const ripple =
-        waves[0]!.amp * Math.sin((lon * waves[0]!.freq + lat * 1.6) * Math.PI * 2 + waves[0]!.phase) +
-        waves[1]!.amp * Math.sin((lon * waves[1]!.freq - lat * 3.2) * Math.PI * 2 + waves[1]!.phase);
-      const thin = Math.abs(Math.sin((lat + ripple) * Math.PI * 23));
-      const tint = Math.min(1, Math.max(0, 0.35 + thin * 0.4 + ripple * 1.5));
-      const c = mixColor(a, b, tint);
-      const i = (y * canvas.width + x) * 4;
-      img.data[i] = c.r;
-      img.data[i + 1] = c.g;
-      img.data[i + 2] = c.b;
-      img.data[i + 3] = 255;
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-
-  for (let i = 0; i < 10; i++) {
-    const y = rng.range(8, canvas.height - 8);
-    const h = rng.range(1, 3);
-    ctx.fillStyle = rng.chance(0.5) ? 'rgba(255,255,255,0.11)' : 'rgba(45,30,45,0.13)';
-    ctx.fillRect(0, y, canvas.width, h);
-  }
-
-  if (rng.chance(0.55)) {
-    const storm = palette[palette.length - 1]!;
-    const x = rng.range(canvas.width * 0.25, canvas.width * 0.75);
-    const y = rng.range(canvas.height * 0.28, canvas.height * 0.7);
-    const rx = rng.range(14, 26);
-    const ry = rng.range(5, 10);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rng.range(-0.15, 0.15));
-    ctx.fillStyle = rgba(storm, 0.32);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.24)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  return Texture.from(canvas);
-}
-
-function gasCloudTexture(seed: string, body: BodySpec): Texture {
-  const size = GAS_TEXTURE_SIZE;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext('2d')!;
-  const rng = new Rng(hash128(`${seed}/gas:${body.id}:clouds`));
-
-  for (let i = 0; i < 28; i++) {
-    const y = rng.range(8, canvas.height - 8);
-    const amp = rng.range(2, 8);
-    const phase = rng.angle();
-    const freq = rng.range(0.015, 0.035);
-    ctx.beginPath();
-    for (let x = -8; x <= canvas.width + 8; x += 8) {
-      const yy = y + Math.sin(x * freq + phase) * amp;
-      if (x === -8) ctx.moveTo(x, yy);
-      else ctx.lineTo(x, yy);
-    }
-    ctx.strokeStyle = `rgba(255, 255, 255, ${rng.range(0.08, 0.22)})`;
-    ctx.lineWidth = rng.range(1.2, 3.8);
-    ctx.stroke();
-  }
-
-  return Texture.from(canvas);
-}
-
-let gasShadeTexture: Texture | null = null;
-
-function sphereShadeTexture(): Texture {
-  if (gasShadeTexture) return gasShadeTexture;
-  const size = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  let g = ctx.createRadialGradient(size * 0.38, size * 0.34, size * 0.08, size / 2, size / 2, size * 0.56);
-  g.addColorStop(0, 'rgba(255,255,255,0.24)');
-  g.addColorStop(0.45, 'rgba(255,255,255,0.02)');
-  g.addColorStop(0.82, 'rgba(0,0,0,0.18)');
-  g.addColorStop(1, 'rgba(0,0,0,0.62)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  g = ctx.createLinearGradient(0, 0, size, size);
-  g.addColorStop(0, 'rgba(255,255,255,0.12)');
-  g.addColorStop(0.45, 'rgba(255,255,255,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.24)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  gasShadeTexture = Texture.from(canvas);
-  return gasShadeTexture;
-}
 
 /** Radial-gradient glow texture (star halos). Canvas-baked once per color. */
 function glowTexture(color: string): Texture {
@@ -189,6 +52,22 @@ function glowTexture(color: string): Texture {
   return Texture.from(canvas);
 }
 
+/** Stroke one ringlet half as a polyline (Pixi v8 Graphics has no
+ *  half-ellipse primitive). `overlap` extends past both endpoints. */
+function drawHalfEllipse(g: Graphics, ringlet: RingletSpec, from: number, to: number, overlap: number): void {
+  const segments = 40;
+  const start = from - overlap;
+  const span = to - from + overlap * 2;
+  for (let i = 0; i <= segments; i++) {
+    const theta = start + (span * i) / segments;
+    const x = Math.cos(theta) * ringlet.rx;
+    const y = Math.sin(theta) * ringlet.ry;
+    if (i === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
+  }
+  g.stroke({ width: ringlet.width, color: ringlet.color, alpha: ringlet.alpha });
+}
+
 /** Starfield camera factor: between nebula (0.15×) and playfield (1×). */
 const STARFIELD_PARALLAX = 0.3;
 
@@ -200,16 +79,22 @@ interface StarNode {
 interface BodyNode {
   root: Container;
   body: BodySpec;
-  moons: Graphics[];
-  gas?: GasGiantNode;
+  moons: Container[];
+  planet: PlanetNode;
 }
 
-interface GasGiantNode {
+/** A textured surface layer; speed scrolls tilePosition.x in draw()
+ *  (0 = static — gas bands/clouds and ocean clouds drift, the rest don't). */
+interface PlanetLayer {
+  sprite: TilingSprite;
+  speed: number;
+}
+
+interface PlanetNode {
   root: Container;
-  bands: TilingSprite;
-  clouds: TilingSprite;
-  bandSpeed: number;
-  cloudSpeed: number;
+  layers: PlanetLayer[];
+  /** Lava only: emissive glow layer alpha-pulses (no texture regen). */
+  pulse?: { sprite: TilingSprite; base: number; amp: number; freq: number; phase: number };
   /** Axis tilt in radians; rings share it so they sit on the equator. */
   tilt: number;
 }
@@ -340,10 +225,11 @@ export class Renderer {
     for (const node of this.bodyNodes) {
       const pos = bodyPosition(node.body, t);
       node.root.position.set(pos.x, pos.y);
-      if (node.gas) {
-        node.gas.bands.tilePosition.x = t * node.gas.bandSpeed;
-        node.gas.clouds.tilePosition.x = t * node.gas.cloudSpeed;
+      for (const layer of node.planet.layers) {
+        if (layer.speed !== 0) layer.sprite.tilePosition.x = t * layer.speed;
       }
+      const pulse = node.planet.pulse;
+      if (pulse) pulse.sprite.alpha = pulse.base + pulse.amp * Math.sin(t * pulse.freq + pulse.phase);
       node.body.moons.forEach((moon, i) => {
         const ma = moon.initialAngle + ((Math.PI * 2) / moon.orbitPeriodSec) * t;
         node.moons[i]!.position.set(Math.cos(ma) * moon.orbitRadius, Math.sin(ma) * moon.orbitRadius);
@@ -446,24 +332,23 @@ export class Renderer {
     this.bodyNodes = [];
     for (const body of spec.bodies) {
       const root = new Container();
-      const gas = body.type === 'gas_giant' ? this.makeGasGiant(body, spec.seed) : undefined;
-      if (gas) {
-        root.addChild(gas.root);
-      } else {
-        const core = new Graphics().circle(0, 0, body.radius).fill(BODY_COLORS[body.type]);
-        root.addChild(core);
-      }
-
+      const planet = this.makePlanet(body, spec.seed);
+      // Ring halves sandwich the sphere so the planet occludes the far side.
       if (body.hasRings) {
-        const rings = new Graphics()
-          .ellipse(0, 0, body.radius * 1.9, body.radius * 0.6)
-          .stroke({ width: 2, color: 0xdcd2b4, alpha: 0.5 });
-        rings.rotation = gas ? gas.tilt : 0.4;
-        root.addChild(rings);
+        const rings = this.makeRings(body, spec.seed, planet.tilt);
+        root.addChild(rings.back, planet.root, rings.front);
+      } else {
+        root.addChild(planet.root);
       }
 
-      const moons: Graphics[] = body.moons.map((moon) => {
-        const m = new Graphics().circle(0, 0, moon.radius).fill(0x9aa0ae);
+      const moons: Container[] = body.moons.map((moon) => {
+        const m = new Container();
+        const core = new Graphics().circle(0, 0, moon.radius).fill(0x9aa0ae);
+        const shade = new Sprite(moonShadeTexture());
+        shade.anchor.set(0.5);
+        shade.width = moon.radius * 2;
+        shade.height = moon.radius * 2;
+        m.addChild(core, shade);
         root.addChild(m);
         return m;
       });
@@ -482,62 +367,128 @@ export class Renderer {
       root.addChild(label);
 
       this.bodyLayer.addChild(root);
-      this.bodyNodes.push({ root, body, moons, ...(gas ? { gas } : {}) });
+      this.bodyNodes.push({ root, body, moons, planet });
     }
   }
 
-  private makeGasGiant(body: BodySpec, seed: string): GasGiantNode {
+  /** Textured sphere for any body type. Gas giants keep their frozen rng
+   *  labels and draw order (`gas:${id}:motion`: tilt, band speed, cloud
+   *  speed) so existing systems don't reroll. */
+  private makePlanet(body: BodySpec, seed: string): PlanetNode {
     const diameter = body.radius * 2;
-    const rng = new Rng(hash128(`${seed}/gas:${body.id}:motion`));
-    const tilt = rng.range(-0.5, 0.5);
-    const root = new Container();
-    const tileScale = {
-      x: (body.radius * 4) / GAS_TEXTURE_SIZE,
-      y: diameter / (GAS_TEXTURE_SIZE / 2),
-    };
-    // +4px bleed: the rotated square only just covers the inscribed circle,
-    // and AA at the tangent points can show seams without it.
-    const bands = new TilingSprite({
-      texture: gasBandTexture(seed, body),
-      width: diameter + 4,
-      height: diameter + 4,
-      anchor: 0.5,
-      applyAnchorToTexture: true,
-      tileScale,
-    });
-    const clouds = new TilingSprite({
-      texture: gasCloudTexture(seed, body),
-      width: diameter + 4,
-      height: diameter + 4,
-      anchor: 0.5,
-      applyAnchorToTexture: true,
-      tileScale,
-    });
-    clouds.alpha = 0.62;
+    const gas = body.type === 'gas_giant';
+    const rng = new Rng(hash128(`${seed}/${gas ? 'gas' : 'planet'}:${body.id}:motion`));
+    const tilt = gas ? rng.range(-0.5, 0.5) : rng.range(-0.35, 0.35);
+
+    interface LayerDef {
+      texture: Texture;
+      speed: number;
+      alpha?: number;
+      additive?: boolean;
+    }
+    const defs: LayerDef[] = [];
+    switch (body.type) {
+      case 'gas_giant':
+        defs.push({
+          texture: gasBandTexture(seed, body),
+          speed: rng.range(3, 8) * (rng.chance(0.5) ? 1 : -1),
+        });
+        defs.push({
+          texture: gasCloudTexture(seed, body),
+          speed: rng.range(9, 18) * (rng.chance(0.5) ? 1 : -1),
+          alpha: 0.62,
+        });
+        break;
+      case 'rocky':
+        defs.push({ texture: rockyTexture(seed, body), speed: 0 });
+        break;
+      case 'ice':
+        defs.push({ texture: iceTexture(seed, body), speed: 0 });
+        break;
+      case 'lava': {
+        const { crust, glow } = lavaTextures(seed, body);
+        defs.push({ texture: crust, speed: 0 });
+        defs.push({ texture: glow, speed: 0, additive: true });
+        break;
+      }
+      case 'ocean':
+        defs.push({ texture: oceanTexture(seed, body), speed: 0 });
+        defs.push({
+          texture: oceanCloudTexture(seed, body),
+          speed: rng.range(3, 7) * (rng.chance(0.5) ? 1 : -1),
+          alpha: 0.5,
+        });
+        break;
+    }
+
     const spin = new Container();
     spin.rotation = tilt;
-    spin.addChild(bands, clouds);
+    const layers: PlanetLayer[] = defs.map((def) => {
+      // +4px bleed: the rotated square only just covers the inscribed circle,
+      // and AA at the tangent points can show seams without it.
+      const sprite = new TilingSprite({
+        texture: def.texture,
+        width: diameter + 4,
+        height: diameter + 4,
+        anchor: 0.5,
+        applyAnchorToTexture: true,
+        tileScale: {
+          x: (body.radius * 4) / def.texture.width,
+          y: diameter / def.texture.height,
+        },
+      });
+      if (def.alpha !== undefined) sprite.alpha = def.alpha;
+      if (def.additive) sprite.blendMode = 'add';
+      spin.addChild(sprite);
+      return { sprite, speed: def.speed };
+    });
+
+    let pulse: PlanetNode['pulse'];
+    if (body.type === 'lava') {
+      pulse = {
+        sprite: layers[1]!.sprite,
+        base: 0.75,
+        amp: 0.25,
+        freq: rng.range(1.5, 3),
+        phase: rng.angle(),
+      };
+    }
 
     const shade = new Sprite(sphereShadeTexture());
     shade.anchor.set(0.5);
     shade.width = diameter;
     shade.height = diameter;
 
+    const rimColor = gas
+      ? 0xf4e8cf
+      : rgbToNumber(mixColor(planetPalette(seed, body)[1]!, { r: 255, g: 255, b: 255 }, 0.55));
     const rim = new Graphics()
       .circle(0, 0, body.radius)
-      .stroke({ width: 1.5, color: 0xf4e8cf, alpha: 0.32 });
+      .stroke({ width: 1.5, color: rimColor, alpha: gas ? 0.32 : 0.25 });
     const mask = new Graphics().circle(0, 0, body.radius).fill(0xffffff);
+    const root = new Container();
     root.mask = mask;
     root.addChild(spin, shade, rim, mask);
 
-    return {
-      root,
-      bands,
-      clouds,
-      bandSpeed: rng.range(3, 8) * (rng.chance(0.5) ? 1 : -1),
-      cloudSpeed: rng.range(9, 18) * (rng.chance(0.5) ? 1 : -1),
-      tilt,
-    };
+    return { root, layers, ...(pulse ? { pulse } : {}), tilt };
+  }
+
+  /** Ring system as two Graphics: the upper half-ellipse sits behind the
+   *  sphere, the lower in front, so the planet occludes the far side. */
+  private makeRings(body: BodySpec, seed: string, tilt: number): { back: Graphics; front: Graphics } {
+    const palette = planetPalette(seed, body);
+    const specs = makeRingletSpecs(seed, body, palette);
+    const back = new Graphics();
+    const front = new Graphics();
+    for (const ringlet of specs) {
+      // Front half overdraws the joint slightly: butt-capped polyline ends
+      // otherwise leave an AA seam where the halves meet at the planet edge.
+      drawHalfEllipse(back, ringlet, Math.PI, Math.PI * 2, 0);
+      drawHalfEllipse(front, ringlet, 0, Math.PI, 0.06);
+    }
+    back.rotation = tilt;
+    front.rotation = tilt;
+    return { back, front };
   }
 
   private buildGates(): void {
