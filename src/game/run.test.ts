@@ -127,41 +127,60 @@ describe('persistence', () => {
     saveRun(run, storage);
     expect(loadRun(storage)).toEqual(run);
 
-    storage.setItem('sas:run:v4', '{"nope":true}');
+    storage.setItem('sas:run:v5', '{"nope":true}'); // garbage under the current key
     expect(loadRun(storage)).toBeNull();
 
     const old = fakeStorage();
+    old.setItem('sas:run:v4', '{"nope":true}');
     old.setItem('sas:run:v3', '{"nope":true}');
     old.setItem('sas:run:v2', '{"nope":true}');
     expect(loadRun(old)).toBeNull(); // garbage in the legacy keys, too
   });
 
-  it('migrates a v2 save in place: cargo + goal added, old key removed', () => {
+  it('migrates a v2 save in place: cargo + goal + standing added, old key removed', () => {
     const storage = fakeStorage();
     const v2 = { ...newRun('Photosynthesis'), schemaVersion: 2 } as Record<string, unknown>;
     delete v2.cargo;
     delete v2.goalJumps;
+    delete v2.standing;
     storage.setItem('sas:run:v2', JSON.stringify(v2));
 
     const migrated = loadRun(storage)!;
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.cargo).toEqual({});
     expect(migrated.goalJumps).toBe(DEFAULT_GOAL_JUMPS);
+    expect(migrated.standing).toEqual({});
     expect(migrated.currentTitle).toBe('Photosynthesis');
     expect(storage.getItem('sas:run:v2')).toBeNull();
-    expect(loadRun(storage)).toEqual(migrated); // resaved under the v4 key
+    expect(loadRun(storage)).toEqual(migrated); // resaved under the v5 key
   });
 
-  it('migrates a v3 save in place: goal added, old key removed', () => {
+  it('migrates a v3 save in place: goal + standing added, old key removed', () => {
     const storage = fakeStorage();
     const v3 = { ...newRun('Photosynthesis'), schemaVersion: 3 } as Record<string, unknown>;
     delete v3.goalJumps;
+    delete v3.standing;
     storage.setItem('sas:run:v3', JSON.stringify(v3));
 
     const migrated = loadRun(storage)!;
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(5);
     expect(migrated.goalJumps).toBe(DEFAULT_GOAL_JUMPS);
+    expect(migrated.standing).toEqual({});
     expect(storage.getItem('sas:run:v3')).toBeNull();
+    expect(loadRun(storage)).toEqual(migrated);
+  });
+
+  it('migrates a v4 save in place: standing added, old key removed', () => {
+    const storage = fakeStorage();
+    const v4 = { ...newRun('Photosynthesis'), schemaVersion: 4 } as Record<string, unknown>;
+    delete v4.standing;
+    storage.setItem('sas:run:v4', JSON.stringify(v4));
+
+    const migrated = loadRun(storage)!;
+    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.standing).toEqual({});
+    expect(migrated.goalJumps).toBe(DEFAULT_GOAL_JUMPS);
+    expect(storage.getItem('sas:run:v4')).toBeNull();
     expect(loadRun(storage)).toEqual(migrated);
   });
 
@@ -194,6 +213,15 @@ describe('hull & credits (§7)', () => {
     expect(run.status).toBe('dead');
     expect(run.deathCause).toBe('hull');
     expect(damageHull(run, 10)).toBe(false); // already dead — no double-report
+  });
+
+  it("a combat killing blow records death cause 'destroyed' (§15)", () => {
+    const run = newRun('Photosynthesis');
+    expect(damageHull(run, 20, 'destroyed')).toBe(false); // survivable hit
+    expect(run.deathCause).toBeUndefined();
+    expect(damageHull(run, 999, 'destroyed')).toBe(true);
+    expect(run.status).toBe('dead');
+    expect(run.deathCause).toBe('destroyed');
   });
 
   it('credits spend only when affordable; fuel clamps at max', () => {

@@ -101,6 +101,8 @@ export function summaryTitle(run: RunState): string {
       return 'RUN OVER — ADRIFT, FUEL EXHAUSTED';
     case 'abandoned':
       return 'RUN ABANDONED';
+    case 'destroyed':
+      return 'RUN OVER — DESTROYED IN COMBAT';
     default:
       return 'RUN OVER — HULL BREACH';
   }

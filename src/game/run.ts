@@ -8,7 +8,7 @@
 
 import { systemName } from '../gen/names';
 import { hash128, normalizeTitle } from '../rng';
-import type { GateKind, GateSpec, SystemSpec } from '../types';
+import type { FactionId, GateKind, GateSpec, SystemSpec } from '../types';
 import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
 import { cargoValue } from './market';
 import { derelictsFor } from './salvage';
@@ -28,10 +28,12 @@ export interface RouteEntry {
   via: 'start' | GateKind;
 }
 
-export type DeathCause = 'hull' | 'adrift' | 'abandoned';
+// 'destroyed' (M5 §15) = a hostile landed the killing blow; 'hull' stays the
+// cause for environmental hull loss (hazards, skim, hazard-pocket entry).
+export type DeathCause = 'hull' | 'adrift' | 'abandoned' | 'destroyed';
 
 export interface RunState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   /** Article title of the system the player is in. SPOILER. */
   currentTitle: string;
   /** Where we jumped here from; drives the §4.2 return gate. */
@@ -51,12 +53,16 @@ export interface RunState {
   route: RouteEntry[];
   /** M4 run goal: jumps to survive for victory (§2). */
   goalJumps: number;
+  /** M5 §13.3: per-faction reputation in [−100, +100], absent = neutral 0.
+   *  Per-run for v1; persistent cross-run standing is meta-progression (§12).
+   *  Mutated via game/reputation.ts; gates prices, patrol hostility, services. */
+  standing: Partial<Record<FactionId, number>>;
 }
 
 export function newRun(startTitle: string, goalJumps: number = DEFAULT_GOAL_JUMPS): RunState {
   const title = normalizeTitle(startTitle);
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     currentTitle: title,
     fuel: FUEL_MAX,
     fuelMax: FUEL_MAX,
@@ -68,6 +74,7 @@ export function newRun(startTitle: string, goalJumps: number = DEFAULT_GOAL_JUMP
     status: 'active',
     route: [{ title, via: 'start' }],
     goalJumps: Math.max(1, Math.round(goalJumps)),
+    standing: {},
   };
 }
 
@@ -77,13 +84,19 @@ export function jumpsMade(run: RunState): number {
 
 // --- §7 resources: hull, credits, fuel, loot -------------------------------
 
-/** Apply hull damage. Returns true when this hit ends the run. */
-export function damageHull(run: RunState, amount: number): boolean {
+/** Apply hull damage. Returns true when this hit ends the run. `cause` lets
+ *  combat (§15) record a killing blow as 'destroyed' while environmental
+ *  damage stays 'hull'; both are hull-zero deaths through the same path. */
+export function damageHull(
+  run: RunState,
+  amount: number,
+  cause: 'hull' | 'destroyed' = 'hull',
+): boolean {
   if (run.status !== 'active') return false;
   run.hull = Math.max(0, run.hull - amount);
   if (run.hull <= 0) {
     run.status = 'dead';
-    run.deathCause = 'hull';
+    run.deathCause = cause;
     return true;
   }
   return false;
@@ -264,7 +277,9 @@ export function gatesFor(spec: SystemSpec, arrivedFrom: string | undefined): Gat
 // v2: M2 added hull/credits/looted/status. v1 saves were discarded (prototype
 // phase). v3: M3 added the cargo hold — v2 saves migrate in place (cargo: {}).
 // v4: M4 added goalJumps + the 'won' status — v2/v3 saves migrate in place.
-const RUN_KEY = 'sas:run:v4';
+// v5: M5 added per-faction standing — v2/v3/v4 saves migrate in place ({}).
+const RUN_KEY = 'sas:run:v5';
+const RUN_KEY_V4 = 'sas:run:v4';
 const RUN_KEY_V3 = 'sas:run:v3';
 const RUN_KEY_V2 = 'sas:run:v2';
 
@@ -272,15 +287,19 @@ export function saveRun(run: RunState, storage: Storage = localStorage): void {
   storage.setItem(RUN_KEY, JSON.stringify(run));
 }
 
-/** Upgrade a v2 or v3 save to v4. Returns null for anything else. */
+/** Upgrade a v2/v3/v4 save to v5 (each adds the fields its version lacked).
+ *  Returns null for anything else. */
 function migrateLegacy(raw: string): RunState | null {
   const run = JSON.parse(raw);
   if (typeof run?.currentTitle !== 'string') return null;
   if (run.schemaVersion === 2) {
-    return { ...run, schemaVersion: 4, cargo: {}, goalJumps: DEFAULT_GOAL_JUMPS } as RunState;
+    return { ...run, schemaVersion: 5, cargo: {}, goalJumps: DEFAULT_GOAL_JUMPS, standing: {} } as RunState;
   }
   if (run.schemaVersion === 3) {
-    return { ...run, schemaVersion: 4, goalJumps: DEFAULT_GOAL_JUMPS } as RunState;
+    return { ...run, schemaVersion: 5, goalJumps: DEFAULT_GOAL_JUMPS, standing: {} } as RunState;
+  }
+  if (run.schemaVersion === 4) {
+    return { ...run, schemaVersion: 5, standing: {} } as RunState;
   }
   return null;
 }
@@ -290,11 +309,11 @@ export function loadRun(storage: Storage = localStorage): RunState | null {
     const raw = storage.getItem(RUN_KEY);
     if (raw) {
       const run = JSON.parse(raw);
-      return run?.schemaVersion === 4 && typeof run.currentTitle === 'string'
+      return run?.schemaVersion === 5 && typeof run.currentTitle === 'string'
         ? (run as RunState)
         : null;
     }
-    for (const key of [RUN_KEY_V3, RUN_KEY_V2]) {
+    for (const key of [RUN_KEY_V4, RUN_KEY_V3, RUN_KEY_V2]) {
       const old = storage.getItem(key);
       if (!old) continue;
       const migrated = migrateLegacy(old);

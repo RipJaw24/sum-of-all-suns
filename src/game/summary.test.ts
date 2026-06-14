@@ -103,6 +103,8 @@ describe('routeText (share/export)', () => {
     expect(summaryTitle(run)).toContain('ADRIFT');
     run.deathCause = 'abandoned';
     expect(summaryTitle(run)).toContain('ABANDONED');
+    run.deathCause = 'destroyed';
+    expect(summaryTitle(run)).toContain('DESTROYED IN COMBAT');
     expect(statsLine(run)).toContain('2 jumps');
     expect(statsLine(run)).toContain('3 systems');
   });
