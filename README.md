@@ -100,7 +100,10 @@ Run state (fuel, route, visited gates) is kept strictly separate from `SystemSpe
 | **M1** | ✅ | Jumping works end-to-end; snapshot cache; §4.2 return gates; fuel cost; system map |
 | **M2** | ✅ | Fuel/hull/credits; docking + refuel; death + run summary; **Decrypt Flight Log** |
 | **M3** | ✅ | Trade goods; lore fragments; anomaly systems; nebula backgrounds; PixiJS |
-| **M4** | ✅ | Main menu + pause; run goal (survive N jumps); audio; fail-early offline UX; secret-keeping audit; balance; ship |
+| **M4** | ✅ | Main menu + pause; run goal (survive N jumps); audio; fail-early offline UX; secret-keeping audit; balance; ship (v1) |
+| **M5** | 🔜 | The Living Galaxy: factions from category clusters; life/habitation; NPC agents (traders/patrols/pirates); light combat; per-faction standing; random events |
+| **M6** | 🔜 | Visual identity: faction/habitation-styled station graphics; player-ship graphics pass; body rendering refinement; NPC sprites; faction-colored UI |
+| **M7** | 🔜 | Soundscape: combat/NPC/event SFX; per-faction & per-habitation ambient beds; jump/dock/UI audio polish (full pass beyond M4's minimal SFX) |
 
 ---
 
