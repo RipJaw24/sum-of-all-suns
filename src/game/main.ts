@@ -784,11 +784,11 @@ async function boot(): Promise<void> {
     const body = dockedBody!;
     const station = body.station!;
     if (dockView === 'services') {
-      if (input.wasPressed('KeyR') && buyRefuel(run, station)) {
+      if (input.wasPressed('KeyR') && buyRefuel(spec, run, station)) {
         saveRun(run);
         audio.uiSelect();
       }
-      if (input.wasPressed('KeyF') && buyRepair(run, station)) {
+      if (input.wasPressed('KeyF') && buyRepair(spec, run, station)) {
         saveRun(run);
         audio.uiSelect();
       }
@@ -842,7 +842,7 @@ async function boot(): Promise<void> {
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
     if (dockView === 'trade') drawTrade(ctx, body, run, spec, tradeCursor);
-    else drawDock(ctx, body, run);
+    else drawDock(ctx, body, run, spec);
   }
 
   function frameSummary(t: number): void {

@@ -9,8 +9,8 @@
 import { systemName } from '../gen/names';
 import { hash128, normalizeTitle } from '../rng';
 import type { FactionId, GateKind, GateSpec, SystemSpec } from '../types';
-import { HULL_MAX, START_CREDITS, refuelUnitPrice } from './economy';
-import { cargoValue } from './market';
+import { HULL_MAX, START_CREDITS } from './economy';
+import { effectiveCargoValue, effectiveRefuelUnitPrice } from './reputation';
 import { derelictsFor } from './salvage';
 
 export const FUEL_MAX = 100;
@@ -188,8 +188,12 @@ export function isStranded(run: RunState, gates: readonly GateSpec[], spec: Syst
   // sitting on sellable cargo is not stranded.
   const station = spec.bodies.find((b) => b.station?.services.includes('refuel'))?.station;
   if (station) {
-    const sellable = station.services.includes('trade') ? cargoValue(run.cargo, spec) : 0;
-    const buyable = Math.floor((run.credits + sellable) / refuelUnitPrice(station.priceLevel));
+    // Use the SAME faction/standing-adjusted prices the dock will charge, so
+    // the safety check can't say "affordable" then leave the player soft-locked.
+    const sellable = station.services.includes('trade') ? effectiveCargoValue(spec, run) : 0;
+    const buyable = Math.floor(
+      (run.credits + sellable) / effectiveRefuelUnitPrice(spec, run, station),
+    );
     if (run.fuel + buyable >= cheapest) return false;
   }
   // Gas giants can always be skimmed (slow and hull-hazardous — that risk is

@@ -7,14 +7,13 @@
 
 import { goodById } from '../gen/goods';
 import type { BodySpec, StationSpec, SystemSpec } from '../types';
+import { REFUEL_STEP, REPAIR_STEP, serviceCost } from './economy';
+import { marketGoodIds } from './market';
 import {
-  REFUEL_STEP,
-  REPAIR_STEP,
-  refuelUnitPrice,
-  repairUnitPrice,
-  serviceCost,
-} from './economy';
-import { marketGoodIds, priceFor } from './market';
+  effectiveGoodPrice,
+  effectiveRefuelUnitPrice,
+  effectiveRepairUnitPrice,
+} from './reputation';
 import {
   CARGO_MAX,
   addCargo,
@@ -33,38 +32,38 @@ export interface ServiceQuote {
   cost: number;
 }
 
-export function refuelQuote(run: RunState, station: StationSpec): ServiceQuote {
+export function refuelQuote(spec: SystemSpec, run: RunState, station: StationSpec): ServiceQuote {
   const units = Math.min(REFUEL_STEP, run.fuelMax - run.fuel);
-  return { units, cost: serviceCost(units, refuelUnitPrice(station.priceLevel)) };
+  return { units, cost: serviceCost(units, effectiveRefuelUnitPrice(spec, run, station)) };
 }
 
-export function repairQuote(run: RunState, station: StationSpec): ServiceQuote {
+export function repairQuote(spec: SystemSpec, run: RunState, station: StationSpec): ServiceQuote {
   const units = Math.min(REPAIR_STEP, run.hullMax - run.hull);
-  return { units, cost: serviceCost(units, repairUnitPrice(station.priceLevel)) };
+  return { units, cost: serviceCost(units, effectiveRepairUnitPrice(spec, run, station)) };
 }
 
 /** Buy one refuel step. False when tank is full or credits are short. */
-export function buyRefuel(run: RunState, station: StationSpec): boolean {
-  const { units, cost } = refuelQuote(run, station);
+export function buyRefuel(spec: SystemSpec, run: RunState, station: StationSpec): boolean {
+  const { units, cost } = refuelQuote(spec, run, station);
   if (units <= 0 || !spendCredits(run, cost)) return false;
   addFuel(run, units);
   return true;
 }
 
 /** Buy one repair step. False when hull is full or credits are short. */
-export function buyRepair(run: RunState, station: StationSpec): boolean {
-  const { units, cost } = repairQuote(run, station);
+export function buyRepair(spec: SystemSpec, run: RunState, station: StationSpec): boolean {
+  const { units, cost } = repairQuote(spec, run, station);
   if (units <= 0 || !spendCredits(run, cost)) return false;
   repairHull(run, units);
   return true;
 }
 
-// --- M3 trade (§7: prices from market.ts; profit comes from geography) -------
+// --- M3 trade (§7 base price × M5 faction/standing bias, reputation.ts) ------
 
 /** Buy one unit. False when the hold is full or credits are short. */
 export function buyGood(run: RunState, spec: SystemSpec, goodId: string): boolean {
   if (cargoCount(run) >= CARGO_MAX) return false;
-  if (!spendCredits(run, priceFor(spec, goodId))) return false;
+  if (!spendCredits(run, effectiveGoodPrice(spec, run, goodId))) return false;
   addCargo(run, goodId, 1);
   return true;
 }
@@ -72,7 +71,7 @@ export function buyGood(run: RunState, spec: SystemSpec, goodId: string): boolea
 /** Sell one held unit at the local price. False when none is held. */
 export function sellGood(run: RunState, spec: SystemSpec, goodId: string): boolean {
   if (!removeCargo(run, goodId, 1)) return false;
-  addCredits(run, priceFor(spec, goodId));
+  addCredits(run, effectiveGoodPrice(spec, run, goodId));
   return true;
 }
 
@@ -82,6 +81,7 @@ export function drawDock(
   ctx: CanvasRenderingContext2D,
   body: BodySpec,
   run: RunState,
+  spec: SystemSpec,
 ): void {
   const station = body.station!;
   const { width, height } = ctx.canvas;
@@ -118,8 +118,8 @@ export function drawDock(
     ctx.fillText(text, x + 20, y + 124 + row * 26);
   };
 
-  const fuel = refuelQuote(run, station);
-  const repair = repairQuote(run, station);
+  const fuel = refuelQuote(spec, run, station);
+  const repair = repairQuote(spec, run, station);
   if (station.services.includes('refuel')) {
     const label =
       fuel.units > 0 ? `[R] REFUEL +${fuel.units} — ${fuel.cost} cr` : '[R] REFUEL — tank full';
@@ -173,7 +173,7 @@ export function drawTrade(
   goods.forEach((id, i) => {
     const good = goodById(id);
     if (!good) return;
-    const price = priceFor(spec, id);
+    const price = effectiveGoodPrice(spec, run, id);
     const held = run.cargo[id] ?? 0;
     const rowY = y + 92 + i * 22;
     const selected = i === cursor;
