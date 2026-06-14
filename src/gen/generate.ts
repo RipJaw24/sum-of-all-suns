@@ -12,6 +12,8 @@
  */
 
 import { Rng, hash128, normalizeTitle, rngForArticle, seedToHex, systemSeed } from '../rng';
+import { factionFor } from './factions';
+import { biomeFor, habitationFor } from './habitation';
 import { GOODS, goodsForSectionTitle } from './goods';
 import { bodyName, moonName, stationName, systemName } from './names';
 import {
@@ -314,6 +316,9 @@ function generateAnomaly(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sys
     return {
       ...spec,
       kind: 'deep_tunnel',
+      // Stubs are wild space (§13.1): a deep tunnel is unaligned frontier,
+      // overriding whatever the (sparse) stub categories would have assigned.
+      faction: null,
       gates: spec.gates.map((g, i) => ({
         ...g,
         kind: 'uncharted' as const,
@@ -364,7 +369,7 @@ function generateAnomaly(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sys
   const hazard = outcome === 'hazard_pocket' ? (arng.chance(0.5) ? 'storm' : 'radiation') : undefined;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     seed: ctx.seedHex,
     sourceTitle: ctx.title,
     name: ctx.name,
@@ -373,6 +378,11 @@ function generateAnomaly(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sys
     bodies,
     gates,
     ambient: { ...ctx.ambientBase, ...(hazard ? { hazard } : {}) },
+    // §13.1: stubs/anomalies are unaligned frontier — lawless, no patrols.
+    faction: null,
+    // §14: still classify habitation — stubs read sterile/barren naturally.
+    habitation: habitationFor(meta, ctx.traffic),
+    biome: biomeFor(meta),
     traffic: ctx.traffic,
     ...(outcome === 'salvage_field'
       ? {
@@ -416,7 +426,7 @@ function generateStandard(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sy
     star.class === 'pulsar' ? 'radiation' : (belt?.density ?? 0) > 0.6 ? 'debris' : undefined;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     seed: ctx.seedHex,
     sourceTitle: ctx.title,
     name: ctx.name,
@@ -426,6 +436,12 @@ function generateStandard(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sy
     gates,
     ...(belt ? { belt } : {}),
     ambient: { ...ctx.ambientBase, ...(hazard ? { hazard } : {}) },
+    // §13: faction control from the coarsened category/P31 signature (pure
+    // hash128, no stream draw — stars/bodies/gates above are unaffected).
+    faction: factionFor(meta, ctx.traffic),
+    // §14: habitation tier + biome, orthogonal to faction (also pure).
+    habitation: habitationFor(meta, ctx.traffic),
+    biome: biomeFor(meta),
     traffic: ctx.traffic,
   };
 }
@@ -453,7 +469,7 @@ export function generateSystem(meta: ArticleMetadata): SystemSpec {
     // gate. Precedence over the stub rule — a tiny disambig page shatters.
     const debris = root.fork('belt');
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       seed: seedHex,
       sourceTitle: title,
       name: ctx.name,
@@ -467,6 +483,11 @@ export function generateSystem(meta: ArticleMetadata): SystemSpec {
         density: roundTo(debris.range(0.6, 0.9)),
       },
       ambient: { ...ctx.ambientBase, hazard: 'debris' },
+      // §13.1: shattered (disambiguation) systems are unaligned hub-puzzles.
+      faction: null,
+      // §14: classified from the disambig page's own metadata, like any other.
+      habitation: habitationFor(meta, ctx.traffic),
+      biome: biomeFor(meta),
       traffic: ctx.traffic,
     };
   }

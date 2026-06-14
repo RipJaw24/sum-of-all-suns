@@ -9,7 +9,7 @@ import { derelictsFor } from './salvage';
 
 const fakeSpec = (over: Partial<SystemSpec>): SystemSpec =>
   ({
-    schemaVersion: 1,
+    schemaVersion: 2,
     seed: 'abcd1234abcd1234abcd1234abcd1234',
     sourceTitle: 'Fake stub',
     name: 'Fake',
@@ -18,6 +18,9 @@ const fakeSpec = (over: Partial<SystemSpec>): SystemSpec =>
     bodies: [],
     gates: [],
     ambient: { paletteId: 0, nebulaSeed: 'n' },
+    faction: null,
+    habitation: 'sterile',
+    biome: 'barren',
     traffic: 0,
     ...over,
   }) as SystemSpec;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractLinkOrder, isJunkLink } from './fetch';
+import { extractLinkOrder, isJunkLink, protectionLevel } from './fetch';
 
 describe('isJunkLink (§4.1 filter)', () => {
   it('drops dates, decades, lists, and identifiers', () => {
@@ -52,5 +52,22 @@ describe('extractLinkOrder (§4.1 in-article ranking)', () => {
     const wikitext =
       '[[File:Sun.jpg|thumb|the sun]] [[Category:Stars]] [[main_sequence]] [[wikt:star]]';
     expect(extractLinkOrder(wikitext)).toEqual(['Main sequence']);
+  });
+});
+
+describe('protectionLevel (§17.1 → §13 contested/militarised)', () => {
+  it('reads the edit restriction, folding extendedconfirmed into autoconfirmed', () => {
+    expect(protectionLevel(undefined)).toBe('none');
+    expect(protectionLevel([])).toBe('none');
+    expect(protectionLevel([{ type: 'move', level: 'sysop' }])).toBe('none'); // move ≠ edit
+    expect(protectionLevel([{ type: 'edit', level: 'autoconfirmed' }])).toBe('autoconfirmed');
+    expect(protectionLevel([{ type: 'edit', level: 'extendedconfirmed' }])).toBe('autoconfirmed');
+    expect(protectionLevel([{ type: 'edit', level: 'sysop' }])).toBe('sysop');
+    expect(
+      protectionLevel([
+        { type: 'edit', level: 'sysop' },
+        { type: 'move', level: 'autoconfirmed' },
+      ]),
+    ).toBe('sysop');
   });
 });

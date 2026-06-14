@@ -51,10 +51,17 @@ export interface LinkMeta {
   resolvedTitle?: string;
 }
 
-/** Everything generate_system is allowed to know. Snapshotted on first visit. */
+/** Everything generate_system is allowed to know. Snapshotted on first visit.
+ *
+ *  v2 (M5, §17): added the optional faction/habitation signals. They are
+ *  OPTIONAL by contract — v1 snapshots in a returning player's cache simply
+ *  lack them, and every consumer must fall back (category hashing for
+ *  faction/habitation). The bump marks "this snapshot may carry M5 signals";
+ *  it never forces a re-fetch (P31 is lazy-with-fallback, decided 2026-06-14).
+ *  degraded.ts leaves all of these undefined (a sensor-glitch frontier). */
 export interface ArticleMetadata {
   /** Schema version of this snapshot shape. */
-  schemaVersion: 1;
+  schemaVersion: 2;
   /** Canonical title (already normalizeTitle'd). Spoiler. */
   title: string;
   byteLength: number;
@@ -72,6 +79,23 @@ export interface ArticleMetadata {
   isDisambiguation: boolean;
   /** ISO 8601 timestamp of when this snapshot was taken. */
   snapshotAt: string;
+
+  // --- M5 §17 signals (all optional; v1 snapshots and degraded lack them) ---
+
+  /** Edit-protection level (§17.1, `inprop=protection` on the `edit` action).
+   *  'autoconfirmed' → contested border; 'sysop' → militarised faction core.
+   *  Undefined when unknown; absent protection is reported as 'none'. */
+  protection?: 'none' | 'autoconfirmed' | 'sysop';
+  /** Number of interlanguage links (§17.1, `langlinks`; Earth ≈ 316). Drives
+   *  the sterile→teeming civilization tier (§14). */
+  languageCount?: number;
+  /** Wikidata Q-id (§17.1, `pageprops.wikibase_item`) — the gateway to P31.
+   *  Free; already returned by the batched query. */
+  wikidataId?: string;
+  /** Wikidata `instance of` (P31) Q-ids (§17.2). The PRIMARY faction/habitation
+   *  lever when present; category hashing is the fallback. Lazily fetched and
+   *  hard-cached — may be undefined even when wikidataId is set. */
+  instanceOf?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -190,8 +214,61 @@ export interface AmbientSpec {
   hazard?: 'radiation' | 'debris' | 'storm';
 }
 
+// ---------------------------------------------------------------------------
+// M5 §13 — factions (PURE world data: derived deterministically from metadata,
+// golden-tested, never the runtime sim). Standing lives in RunState (run.ts).
+// ---------------------------------------------------------------------------
+
+/** Stable faction ids. Synced with the FACTIONS table in gen/factions.ts —
+ *  appending is safe, reordering/renaming remaps every system's faction. */
+export type FactionId =
+  | 'helion_compact'
+  | 'karn_ascendancy'
+  | 'orrery_collegium'
+  | 'vossik_combine'
+  | 'lattice_choir'
+  | 'ashfall_cartel'
+  | 'mirec_concord'
+  | 'sable_directorate';
+
+/** Static archetype temperament (§13.1) — drives station services, NPC mix,
+ *  and combat posture in later phases. Fixed per faction, never per system. */
+export type FactionDisposition =
+  | 'merchant'
+  | 'militarist'
+  | 'scientific'
+  | 'industrial'
+  | 'zealot'
+  | 'outlaw';
+
+/** Faction control of a system (§13.1). null = unaligned frontier. */
+export interface FactionRef {
+  id: FactionId;
+  /** Border/busy/edit-protected space: mixed presence, patrols, where light
+   *  combat concentrates. A sysop-locked core is held, NOT contested. */
+  contested: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// M5 §14 — life & habitation (PURE, orthogonal to faction: faction = who
+// rules, habitation = how alive). Flavor only — never a resource the player
+// farms. Drives life-bearing rendering (M6), station aesthetic, NPC mix.
+// ---------------------------------------------------------------------------
+
+/** Civilization tier on the sterile→teeming axis (§14): how crowded a system
+ *  is, from langlinks + traffic + article richness. */
+export type HabitationTier = 'sterile' | 'frontier' | 'settled' | 'teeming';
+
+/** What kind of place it is, from the article's ontological class (§14: P31
+ *  primary, category keywords fallback). Orthogonal to the tier — a teeming
+ *  'machine' world is busy but automated; a 'barren' one hosts no life. */
+export type BiomeHint = 'verdant' | 'industrial' | 'civic' | 'machine' | 'barren';
+
 export interface SystemSpec {
-  schemaVersion: 1;
+  /** v2 (M5): added the pure `faction` field (§13). Bumped alongside the
+   *  golden regeneration; no GEN_VERSION change — faction derives from
+   *  hash128, not the system seed, so stars/bodies/gates are unchanged. */
+  schemaVersion: 2;
   /** seedToHex(systemSeed(sourceTitle)) — also the golden-file key. */
   seed: string;
   /** Canonical source article title. SPOILER. */
@@ -205,6 +282,14 @@ export interface SystemSpec {
   gates: GateSpec[];
   belt?: AsteroidBeltSpec;
   ambient: AmbientSpec;
+  /** M5 §13: which faction controls this system, or null for unaligned
+   *  frontier (stubs, anomalies, shattered systems, low-category articles).
+   *  Pure — derived in gen/factions.ts from category/P31 signatures. */
+  faction: FactionRef | null;
+  /** M5 §14: civilization tier (how alive). Pure — gen/habitation.ts. */
+  habitation: HabitationTier;
+  /** M5 §14: biome flavor (what kind of place). Pure — gen/habitation.ts. */
+  biome: BiomeHint;
   /** 0..1 normalized from pageviews60d (log scale). Drives NPC density,
    *  prices, and (post-MVP) patrol/pirate presence. */
   traffic: number;

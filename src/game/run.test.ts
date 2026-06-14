@@ -257,7 +257,7 @@ describe('isStranded (§7 fuel-out death)', () => {
   });
   const fakeSpec = (over: Partial<SystemSpec>): SystemSpec =>
     ({
-      schemaVersion: 1,
+      schemaVersion: 2,
       seed: '00000000000000000000000000000000',
       sourceTitle: 'Fake',
       name: 'Fake',
@@ -266,6 +266,9 @@ describe('isStranded (§7 fuel-out death)', () => {
       bodies: [],
       gates: [],
       ambient: { paletteId: 0, nebulaSeed: 'n' },
+      faction: null,
+      habitation: 'sterile',
+      biome: 'barren',
       traffic: 0,
       ...over,
     }) as SystemSpec;

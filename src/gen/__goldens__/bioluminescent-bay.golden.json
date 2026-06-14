@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "seed": "3e45b2e125b140bf8a8b3f29917fcd77",
   "sourceTitle": "Bioluminescent bay",
   "name": "Velaestrerk",
@@ -119,5 +119,11 @@
     "nebulaSeed": "91b4a58cd4bd4a52f45fb2d0b1565d0e",
     "hazard": "radiation"
   },
+  "faction": {
+    "id": "helion_compact",
+    "contested": true
+  },
+  "habitation": "frontier",
+  "biome": "barren",
   "traffic": 0.515
 }

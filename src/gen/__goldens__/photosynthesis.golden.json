@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "seed": "028728afd9d75f3c30f637a9eba6403a",
   "sourceTitle": "Photosynthesis",
   "name": "Moash Nizith",
@@ -246,5 +246,11 @@
     "paletteId": 3,
     "nebulaSeed": "9e2ce5a8d6ea129398694346d0afb47d"
   },
+  "faction": {
+    "id": "helion_compact",
+    "contested": true
+  },
+  "habitation": "settled",
+  "biome": "verdant",
   "traffic": 0.837
 }

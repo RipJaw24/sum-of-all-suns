@@ -19,8 +19,11 @@ export function degradedMetadata(rawTitle: string): ArticleMetadata {
   const title = normalizeTitle(rawTitle);
   const rng = rngForArticle(title).fork('degraded');
   const sectionCount = rng.int(1, 4);
+  // M5 §17 signals are deliberately omitted: a sensor-glitch system has no
+  // protection/langlinks/Wikidata reading, so faction/habitation fall back to
+  // the (empty) category path → unaligned frontier, fittingly lawless.
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     title,
     // Always small -> dim red dwarf, fittingly "off" for a sensor glitch.
     // INVARIANT: must stay >= STUB_BYTES (2,000) so a degraded system can

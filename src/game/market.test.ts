@@ -16,7 +16,7 @@ const standard = generateSystem(photosynthesis);
 /** Minimal spec; pricing only reads seed + traffic (+ bodies for listings). */
 function fakeSpec(over: Partial<SystemSpec>): SystemSpec {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     seed: 'feedfacefeedfacefeedfacefeedface',
     sourceTitle: 'Fake',
     name: 'Fake',
@@ -25,6 +25,9 @@ function fakeSpec(over: Partial<SystemSpec>): SystemSpec {
     bodies: [],
     gates: [],
     ambient: { paletteId: 0, nebulaSeed: 'n' },
+    faction: null,
+    habitation: 'sterile',
+    biome: 'barren',
     traffic: 0,
     ...over,
   } as SystemSpec;
