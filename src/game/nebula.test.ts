@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { PALETTE_COUNT } from '../gen/generate';
 import { MOODS } from '../gen/lore';
 import { nebulaIntensityFor, nebulaUniformsFor } from './nebula';
-import { PALETTES, hexToRgb01 } from './palettes';
+import { PALETTES, hexToRgb01, mixHex, nebulaColorsFor } from './palettes';
 
 describe('palettes', () => {
   it('table length is pinned to gen PALETTE_COUNT', () => {
@@ -28,6 +28,26 @@ describe('palettes', () => {
         }
       }
     }
+  });
+
+  it('mixHex interpolates and stays valid hex at the endpoints', () => {
+    expect(mixHex('#000000', '#ffffff', 0)).toBe('#000000');
+    expect(mixHex('#000000', '#ffffff', 1)).toBe('#ffffff');
+    expect(mixHex('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(mixHex('#204060', '#2080c0', 0.5)).toMatch(/^#[0-9a-f]{6}$/);
+  });
+
+  it('nebulaColorsFor (§13.2): null is untinted, a faction tint shifts the wisp most', () => {
+    const p = PALETTES[0]!;
+    expect(nebulaColorsFor(p, null)).toEqual({ a: p.nebulaA, b: p.nebulaB, c: p.nebulaC });
+    const tinted = nebulaColorsFor(p, '#ff0000');
+    expect(tinted.a).not.toBe(p.nebulaA);
+    // The highlight (C) blends a larger FRACTION toward the tint than the base
+    // clouds (A/B) — measured as progress of the red channel toward 0xff.
+    const redOf = (hex: string) => parseInt(hex.slice(1, 3), 16);
+    const fracToRed = (tintedHex: string, baseHex: string) =>
+      (redOf(tintedHex) - redOf(baseHex)) / (255 - redOf(baseHex));
+    expect(fracToRed(tinted.c, p.nebulaC)).toBeGreaterThan(fracToRed(tinted.a, p.nebulaA));
   });
 });
 

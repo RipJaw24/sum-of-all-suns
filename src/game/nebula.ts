@@ -11,9 +11,10 @@
  */
 
 import { Geometry, Mesh, Shader } from 'pixi.js';
+import { factionById } from '../gen/factions';
 import { Rng, hash128 } from '../rng';
 import type { SystemSpec } from '../types';
-import { PALETTES, hexToRgb01 } from './palettes';
+import { PALETTES, hexToRgb01, nebulaColorsFor } from './palettes';
 
 // --- pure derivation (unit-tested, GL-free) -----------------------------------
 
@@ -222,15 +223,19 @@ export class NebulaLayer {
   setSystem(spec: SystemSpec): void {
     const params = nebulaUniformsFor(spec.ambient.nebulaSeed);
     const palette = PALETTES[spec.ambient.paletteId % PALETTES.length]!;
+    // §13.2: bleed the controlling faction's tint into the nebula so a region
+    // reads as "theirs"; unaligned frontier keeps the raw category palette.
+    const tint = spec.faction ? factionById(spec.faction.id).tint : null;
+    const colors = nebulaColorsFor(palette, tint);
     const u = this.uniforms;
     u.uOffset1 = [...params.offset1];
     u.uOffset2 = [...params.offset2];
     u.uScale = params.scale;
     u.uWarp = params.warp;
     u.uIntensity = nebulaIntensityFor(spec.kind);
-    u.uColA = hexToRgb01(palette.nebulaA);
-    u.uColB = hexToRgb01(palette.nebulaB);
-    u.uColC = hexToRgb01(palette.nebulaC);
+    u.uColA = hexToRgb01(colors.a);
+    u.uColB = hexToRgb01(colors.b);
+    u.uColC = hexToRgb01(colors.c);
   }
 
   /** Per-frame: fill the screen, drift at 0.15× camera for parallax. */

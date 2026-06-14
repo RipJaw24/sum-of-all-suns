@@ -40,3 +40,35 @@ export function hexToRgb01(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
 }
+
+/** Linear mix of two '#rrggbb' colors; t=0 -> a, t=1 -> b. */
+export function mixHex(a: string, b: string, t: number): string {
+  const na = parseInt(a.slice(1), 16);
+  const nb = parseInt(b.slice(1), 16);
+  const lerp = (shift: number) => {
+    const ca = (na >> shift) & 0xff;
+    const cb = (nb >> shift) & 0xff;
+    return Math.round(ca + (cb - ca) * t) & 0xff;
+  };
+  return `#${((lerp(16) << 16) | (lerp(8) << 8) | lerp(0)).toString(16).padStart(6, '0')}`;
+}
+
+/**
+ * §13.2 — the nebula colors for a system, with the controlling faction's tint
+ * blended in so a region reads as "theirs". Pure display helper (faction tint
+ * is render data, passed in from gen/factions' archetype). null = unaligned
+ * frontier → the untinted ambient palette. The highlight wisp (C) takes the
+ * strongest tint; the base clouds stay mostly the category palette so the
+ * mood↔palette alignment (lore.ts) survives.
+ */
+export function nebulaColorsFor(
+  palette: Palette,
+  factionTint: string | null,
+): { a: string; b: string; c: string } {
+  if (!factionTint) return { a: palette.nebulaA, b: palette.nebulaB, c: palette.nebulaC };
+  return {
+    a: mixHex(palette.nebulaA, factionTint, 0.16),
+    b: mixHex(palette.nebulaB, factionTint, 0.16),
+    c: mixHex(palette.nebulaC, factionTint, 0.3),
+  };
+}

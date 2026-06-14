@@ -12,7 +12,7 @@
  */
 
 import { Rng, hash128, normalizeTitle, rngForArticle, seedToHex, systemSeed } from '../rng';
-import { factionFor } from './factions';
+import { factionById, factionFor } from './factions';
 import { biomeFor, habitationFor } from './habitation';
 import { GOODS, goodsForSectionTitle } from './goods';
 import { bodyName, moonName, stationName, systemName } from './names';
@@ -109,7 +109,12 @@ const ROCKY_TYPES: readonly BodyType[] = ['rocky', 'rocky', 'ice', 'lava', 'ocea
 const FIRST_ORBIT = 150;
 const ORBIT_SPACING = 95;
 
-function generateBodies(meta: ArticleMetadata, root: Rng, displayName: string): BodySpec[] {
+function generateBodies(
+  meta: ArticleMetadata,
+  root: Rng,
+  displayName: string,
+  factionPhonemes?: readonly string[],
+): BodySpec[] {
   const count = clamp(meta.sections.length, 1, MAX_BODIES);
   const layout = root.fork('bodies');
   const maxSectionLen = Math.max(1, ...meta.sections.map((s) => s.byteLength));
@@ -172,7 +177,10 @@ function generateBodies(meta: ArticleMetadata, root: Rng, displayName: string): 
     if (host) {
       host.station = {
         id: 'station:0',
-        name: stationName(srng),
+        // §13.2: station names carry the controlling faction's phoneme flavor.
+        // System/gate names stay neutral (pure title) so a gate's label always
+        // matches the destination's own name on arrival.
+        name: stationName(srng, factionPhonemes),
         services: ['refuel', 'repair', 'trade'],
         priceLevel: roundTo(clamp(0.35 + trafficFor(meta) * 0.5 + srng.range(-0.1, 0.1), 0, 1)),
       };
@@ -403,8 +411,12 @@ function generateAnomaly(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sys
 // --- standard systems -----------------------------------------------------------
 
 function generateStandard(meta: ArticleMetadata, root: Rng, ctx: GenContext): SystemSpec {
+  // §13: faction is pure (hash128, no rng draw) — computing it up here to flow
+  // its phoneme style into station naming cannot shift any generation stream.
+  const faction = factionFor(meta, ctx.traffic);
+  const factionPhonemes = faction ? factionById(faction.id).phonemes : undefined;
   const star = generateStar(meta, root.fork('star'));
-  const bodies = generateBodies(meta, root, ctx.name);
+  const bodies = generateBodies(meta, root, ctx.name, factionPhonemes);
 
   let belt: AsteroidBeltSpec | undefined;
   if (meta.referenceCount >= BELT_MIN_REFS) {
@@ -438,7 +450,7 @@ function generateStandard(meta: ArticleMetadata, root: Rng, ctx: GenContext): Sy
     ambient: { ...ctx.ambientBase, ...(hazard ? { hazard } : {}) },
     // §13: faction control from the coarsened category/P31 signature (pure
     // hash128, no stream draw — stars/bodies/gates above are unaffected).
-    faction: factionFor(meta, ctx.traffic),
+    faction,
     // §14: habitation tier + biome, orthogonal to faction (also pure).
     habitation: habitationFor(meta, ctx.traffic),
     biome: biomeFor(meta),
