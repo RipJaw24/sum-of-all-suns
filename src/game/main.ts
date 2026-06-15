@@ -29,7 +29,8 @@ import {
   rollEncounter,
   seededEvent,
 } from './events';
-import { adjustStanding } from './reputation';
+import { adjustStanding, standingOf } from './reputation';
+import { factionById } from '../gen/factions';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -224,6 +225,19 @@ async function boot(): Promise<void> {
     return derelictsFor(spec).filter((d) => !isLooted(run, spec.sourceTitle, d.id));
   }
 
+  /** §13: the controlling faction + standing block for the HUD (null = the
+   *  unaligned frontier). Assembled here where spec + run + reputation meet. */
+  function factionHud(): HudState['faction'] {
+    if (!spec.faction) return null;
+    const arch = factionById(spec.faction.id);
+    return {
+      name: arch.name,
+      tint: arch.tint,
+      contested: spec.faction.contested,
+      standing: standingOf(run, spec.faction.id),
+    };
+  }
+
   async function enterSystem(t: number): Promise<void> {
     const { meta, source } = await cache.get(run.currentTitle);
     lastSource = source;
@@ -231,6 +245,11 @@ async function boot(): Promise<void> {
     gates = gatesFor(spec, run.previousTitle);
     derelicts = unlootedDerelicts();
     siteOpen = false;
+
+    // §13.3: stamp this visit's controlling faction onto the route log for the
+    // Decrypt reveal (the last entry is always the current system).
+    const here = run.route[run.route.length - 1];
+    if (here && here.title === run.currentTitle) here.faction = spec.faction?.id ?? null;
 
     // §15: seed a fresh, reproducible NPC spawn for this system; the old
     // encounter is despawned (agents are ephemeral, never persisted).
@@ -681,6 +700,7 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
@@ -915,6 +935,7 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: jumping || dying || !target ? null : promptFor(target, skimming),
       ...(nearBody && !siteOpen ? { subPrompt: `[Q] scan ${nearBody.name}` } : {}),
       adrift,
@@ -1014,6 +1035,7 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);

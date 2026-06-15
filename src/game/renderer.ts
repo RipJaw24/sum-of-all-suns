@@ -590,7 +590,21 @@ export class Renderer {
     ctx.fillStyle = 'rgba(205, 214, 244, 0.8)';
     ctx.fillText(`${hud.credits} cr · CARGO ${hud.cargo}/${hud.cargoMax}`, 16, 100);
 
-    let noticeY = 120;
+    // M5 §13: controlling faction + standing (faction-tinted name).
+    let noticeY = 124;
+    if (hud.faction !== undefined) {
+      if (hud.faction === null) {
+        ctx.fillStyle = 'rgba(170, 176, 192, 0.85)';
+        ctx.fillText('UNALIGNED FRONTIER', 16, 122);
+      } else {
+        const f = hud.faction;
+        ctx.fillStyle = f.tint;
+        ctx.fillText(`${f.name}${f.contested ? ' · CONTESTED' : ''}`, 16, 122);
+        ctx.fillStyle = f.standing > 0 ? '#9ee887' : f.standing < 0 ? '#ff6b4a' : 'rgba(205, 214, 244, 0.7)';
+        ctx.fillText(`STANDING ${f.standing > 0 ? '+' : ''}${f.standing}`, 16, 138);
+      }
+      noticeY = 162;
+    }
     if (hud.hazardLabel) {
       ctx.fillStyle = '#ff6b4a';
       ctx.fillText(`⚠ ${hud.hazardLabel}`, 16, noticeY);

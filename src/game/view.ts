@@ -39,6 +39,15 @@ export interface HudState {
   jumps: number;
   /** M4 survive-N goal: jumps needed for victory (§2). */
   goalJumps: number;
+  /** M5 §13: controlling faction + the player's standing with it. null =
+   *  unaligned frontier; undefined = don't show (assembled by main.ts). */
+  faction?: {
+    name: string;
+    /** Faction tint hex, for the name color. */
+    tint: string;
+    contested: boolean;
+    standing: number;
+  } | null;
   prompt: HudPrompt | null;
   /** Secondary hint under the main prompt (e.g. '[Q] scan …'). */
   subPrompt?: string;

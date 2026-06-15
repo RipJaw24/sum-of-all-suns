@@ -26,6 +26,10 @@ export interface RouteEntry {
   /** Canonical article title. SPOILER — decrypt log / debug only. */
   title: string;
   via: 'start' | GateKind;
+  /** M5 §13.3: controlling faction id at visit time (null = frontier),
+   *  stamped on arrival for the Decrypt reveal. Optional — pre-M5 entries and
+   *  not-yet-visited stamps simply omit it. */
+  faction?: FactionId | null;
 }
 
 // 'destroyed' (M5 §15) = a hostile landed the killing blow; 'hull' stays the
