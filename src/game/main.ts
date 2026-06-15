@@ -17,7 +17,10 @@
  */
 
 import { generateSystem } from '../gen/generate';
+import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, SystemSpec } from '../types';
+import { type Agent, populate, stepAgents } from './agents';
+import { COMBAT, type Projectile, fireAgentShot, firePlayerShot, stepProjectiles } from './combat';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -112,6 +115,19 @@ type Interactable =
   | { kind: 'skim'; body: BodySpec }
   | { kind: 'salvage'; derelict: Derelict };
 
+/** Placeholder NPC color: hostiles red, else by type (§15.2). */
+function agentColor(a: Agent): string {
+  if (a.hostile) return '#ff6b4a';
+  switch (a.type) {
+    case 'patrol':
+      return '#7fd4ff';
+    case 'trader':
+      return '#9ee887';
+    default:
+      return '#aab0c0';
+  }
+}
+
 async function boot(): Promise<void> {
   // Two canvases (index.html): Pixi world in #game, 2D text overlays in
   // #overlay above it. All legacy ctx draws (dock/map/site/summary/fade)
@@ -159,6 +175,11 @@ async function boot(): Promise<void> {
   let spec!: SystemSpec;
   let gates: GateSpec[] = [];
   let derelicts: Derelict[] = [];
+  // §15 ephemeral encounter state — re-seeded per system, never persisted.
+  let agents: Agent[] = [];
+  let projectiles: Projectile[] = [];
+  let encounterRng = new Rng(hash128('encounter'));
+  let playerFireCd = 0;
   let lastSource: ArticleSource = 'cache';
   let mapOpen = false;
   let siteOpen = false; // [Q] scan panel (site.ts), only while a body is near
@@ -199,6 +220,13 @@ async function boot(): Promise<void> {
     gates = gatesFor(spec, run.previousTitle);
     derelicts = unlootedDerelicts();
     siteOpen = false;
+
+    // §15: seed a fresh, reproducible NPC spawn for this system; the old
+    // encounter is despawned (agents are ephemeral, never persisted).
+    encounterRng = new Rng(hash128(`${spec.seed}/encounter`));
+    agents = populate(spec, run, encounterRng);
+    projectiles = [];
+    playerFireCd = 0;
 
     // Spawn at the gate that leads back where we came from (it always
     // exists after a jump, §4.2); fresh runs start in open space.
@@ -249,6 +277,9 @@ async function boot(): Promise<void> {
       market: marketGoodIds(spec),
       priceFor: (id: string) => priceFor(spec, id),
       derelictsNow: () => derelicts,
+      // §15 verify hooks: live encounter state (ephemeral, never persisted).
+      agentsNow: () => agents,
+      projectilesNow: () => projectiles,
       extractPixels: () => renderer.extractPixels(),
     });
   }
@@ -598,6 +629,41 @@ async function boot(): Promise<void> {
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
+    drawEncounter();
+  }
+
+  /** §15 placeholder NPC/projectile render on the 2D overlay (world→screen via
+   *  the ship-centered camera). M6 gives agents real sprites in the GL scene. */
+  function drawEncounter(): void {
+    const cx = canvas.width / 2 - ship.x;
+    const cy = canvas.height / 2 - ship.y;
+    for (const p of projectiles) {
+      ctx.fillStyle = p.fromPlayer ? '#7fd4ff' : '#ff6b4a';
+      ctx.beginPath();
+      ctx.arc(p.x + cx, p.y + cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const a of agents) {
+      const sx = a.x + cx;
+      const sy = a.y + cy;
+      if (sx < -40 || sy < -40 || sx > canvas.width + 40 || sy > canvas.height + 40) continue;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(a.heading);
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-7, 6);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-7, -6);
+      ctx.closePath();
+      ctx.fillStyle = agentColor(a);
+      ctx.fill();
+      ctx.restore();
+      if (a.hull < a.hullMax) {
+        ctx.fillStyle = 'rgba(255, 107, 74, 0.85)';
+        ctx.fillRect(sx - 8, sy - 12, 16 * Math.max(0, a.hull / a.hullMax), 2);
+      }
+    }
   }
 
   function frameFlying(t: number, dt: number): void {
@@ -671,6 +737,45 @@ async function boot(): Promise<void> {
         saveRun(run);
         saveDirtyAt = 0;
       }
+    }
+
+    // §15 light combat: player fire, agent AI + return fire, projectile sim.
+    if (!jumping && !dying) {
+      playerFireCd -= dt;
+      if ((input.isFiring() || input.isHeld('KeyF')) && playerFireCd <= 0) {
+        projectiles.push(firePlayerShot(ship));
+        playerFireCd = COMBAT.fireCooldown;
+        audio.shoot();
+      }
+      for (const a of stepAgents(agents, ship, run, dt, encounterRng)) {
+        projectiles.push(fireAgentShot(a, ship));
+      }
+      const combat = stepProjectiles(
+        projectiles,
+        agents,
+        ship,
+        run,
+        spec.faction?.id ?? null,
+        dt,
+        encounterRng,
+      );
+      if (combat.playerHit) {
+        damageFlash = 1;
+        audio.damage();
+      }
+      for (const kill of combat.kills) {
+        const extra = [kill.fuel ? `+${kill.fuel} fuel` : '', kill.goodId ? '+cargo' : '']
+          .filter(Boolean)
+          .join(', ');
+        toast(`HOSTILE DOWN — +${kill.bounty} cr${extra ? ` (${extra})` : ''}`, t);
+        audio.explosion();
+      }
+      if (combat.kills.length > 0 || combat.playerHit) saveRun(run);
+      if (combat.playerKilled) {
+        audio.death();
+        dyingUntil = t + DEATH_BEAT_SEC;
+      }
+      if (agents.some((a) => a.hull <= 0)) agents = agents.filter((a) => a.hull > 0);
     }
 
     // Discrete interactions (skim is held, not pressed).
@@ -753,6 +858,7 @@ async function boot(): Promise<void> {
     };
 
     renderer.draw(spec, gates, ship, t, hud, derelicts);
+    if (!jumping) drawEncounter();
     if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
     if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);
 

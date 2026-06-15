@@ -137,6 +137,17 @@ export class GameAudio {
     this.burst(0.2, 0.3, 180, 0.8);
   }
 
+  /** §15.3 placeholder weapon cue — a short laser zap (M7 does the real pass). */
+  shoot(): void {
+    this.tone('square', 900, 240, 0.1, 0.12);
+  }
+
+  /** §15.3 placeholder kill cue — a noisy low explosion. */
+  explosion(): void {
+    this.burst(0.35, 0.28, 140, 0.7);
+    this.tone('sawtooth', 200, 50, 0.4, 0.18);
+  }
+
   death(): void {
     this.tone('sawtooth', 220, 36, 1.3, 0.26);
     this.burst(0.8, 0.2, 120, 0.6);
