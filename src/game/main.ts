@@ -19,8 +19,17 @@
 import { generateSystem } from '../gen/generate';
 import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, SystemSpec } from '../types';
-import { type Agent, populate, stepAgents } from './agents';
+import { type Agent, populate, spawnAmbush, stepAgents } from './agents';
 import { COMBAT, type Projectile, fireAgentShot, firePlayerShot, stepProjectiles } from './combat';
+import {
+  type DistressBeacon,
+  ambushSize,
+  makeDistress,
+  resolveDistress,
+  rollEncounter,
+  seededEvent,
+} from './events';
+import { adjustStanding } from './reputation';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -113,7 +122,8 @@ type Interactable =
   | { kind: 'dock'; body: BodySpec }
   | { kind: 'mine'; body: BodySpec }
   | { kind: 'skim'; body: BodySpec }
-  | { kind: 'salvage'; derelict: Derelict };
+  | { kind: 'salvage'; derelict: Derelict }
+  | { kind: 'distress'; beacon: DistressBeacon };
 
 /** Placeholder NPC color: hostiles red, else by type (§15.2). */
 function agentColor(a: Agent): string {
@@ -178,6 +188,7 @@ async function boot(): Promise<void> {
   // §15 ephemeral encounter state — re-seeded per system, never persisted.
   let agents: Agent[] = [];
   let projectiles: Projectile[] = [];
+  let beacon: DistressBeacon | null = null; // §16 distress encounter
   let encounterRng = new Rng(hash128('encounter'));
   let playerFireCd = 0;
   let lastSource: ArticleSource = 'cache';
@@ -252,6 +263,19 @@ async function boot(): Promise<void> {
     // §8: warm the cache for every reachable system so jumps never stall.
     cache.prefetch(gates.map((g) => g.destinationTitle));
 
+    // §16 random events: the deterministic system flavor (same for everyone),
+    // then an ephemeral encounter roll. Ship is positioned by now, so an
+    // ambush can close on the player; a distress call drops a beacon to find.
+    beacon = null;
+    toast(seededEvent(spec).headline, t);
+    const encounter = rollEncounter(spec, run, encounterRng);
+    if (encounter === 'ambush') {
+      agents.push(...spawnAmbush(ambushSize(encounterRng), ship.x, ship.y, encounterRng));
+      toast('AMBUSH — HOSTILES INBOUND', t);
+    } else if (encounter === 'distress') {
+      beacon = makeDistress(spec, encounterRng);
+    }
+
     // §4.5 hazard pocket: one-time hull hit on first-ever entry.
     if (spec.kind === 'hazard_pocket' && !isLooted(run, spec.sourceTitle, 'entry-hazard')) {
       markLooted(run, spec.sourceTitle, 'entry-hazard');
@@ -277,9 +301,11 @@ async function boot(): Promise<void> {
       market: marketGoodIds(spec),
       priceFor: (id: string) => priceFor(spec, id),
       derelictsNow: () => derelicts,
-      // §15 verify hooks: live encounter state (ephemeral, never persisted).
+      // §15/§16 verify hooks: live encounter state (ephemeral, never persisted).
       agentsNow: () => agents,
       projectilesNow: () => projectiles,
+      beaconNow: () => beacon,
+      event: seededEvent(spec),
       extractPixels: () => renderer.extractPixels(),
     });
   }
@@ -365,6 +391,10 @@ async function boot(): Promise<void> {
       const d = Math.hypot(derelict.x - ship.x, derelict.y - ship.y);
       consider(d, INTERACT_RANGE, () => ({ kind: 'salvage', derelict }));
     }
+    if (beacon) {
+      const d = Math.hypot(beacon.x - ship.x, beacon.y - ship.y);
+      consider(d, INTERACT_RANGE, () => ({ kind: 'distress', beacon: beacon! }));
+    }
     return best;
   }
 
@@ -420,6 +450,8 @@ async function boot(): Promise<void> {
           : { text: `[hold E] Skim fuel — slow, hazardous`, tone: 'ok' };
       case 'salvage':
         return { text: '[E] Salvage derelict', tone: 'ok' };
+      case 'distress':
+        return { text: '[E] Answer distress call', tone: 'ok' };
     }
   }
 
@@ -478,6 +510,29 @@ async function boot(): Promise<void> {
         saveRun(run);
         audio.pickup();
         toast(`+${target.derelict.fuel} fuel, +${target.derelict.credits} cr — SALVAGED`, t);
+        return;
+      }
+      case 'distress': {
+        // §16.2: a genuine call rewards + earns goodwill; a trap springs an
+        // ambush at the beacon. resolveDistress decides; main applies it.
+        const outcome = resolveDistress(target.beacon, spec, encounterRng);
+        beacon = null;
+        if (outcome.trap) {
+          agents.push(
+            ...spawnAmbush(ambushSize(encounterRng), target.beacon.x, target.beacon.y, encounterRng),
+          );
+          audio.damage();
+          toast('IT WAS A TRAP — HOSTILES DECLOAK', t);
+        } else {
+          addCredits(run, outcome.credits);
+          addFuel(run, outcome.fuel);
+          if (outcome.standingFaction) {
+            adjustStanding(run, outcome.standingFaction, outcome.standingDelta);
+          }
+          saveRun(run);
+          audio.pickup();
+          toast(`DISTRESS ANSWERED — +${outcome.credits} cr, +${outcome.fuel} fuel`, t);
+        }
         return;
       }
       case 'skim':
@@ -637,6 +692,21 @@ async function boot(): Promise<void> {
   function drawEncounter(): void {
     const cx = canvas.width / 2 - ship.x;
     const cy = canvas.height / 2 - ship.y;
+    if (beacon) {
+      const bx = beacon.x + cx;
+      const by = beacon.y + cy;
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+      ctx.strokeStyle = `rgba(255, 210, 90, ${0.35 + 0.45 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, 9 + 5 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 210, 90, 0.85)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('distress beacon', bx, by + 26);
+      ctx.textAlign = 'left';
+    }
     for (const p of projectiles) {
       ctx.fillStyle = p.fromPlayer ? '#7fd4ff' : '#ff6b4a';
       ctx.beginPath();

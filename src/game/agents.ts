@@ -148,6 +148,38 @@ export function populate(spec: SystemSpec, run: RunState, rng: Rng): Agent[] {
   return agents;
 }
 
+/**
+ * §16 ambush: a wave of hostile pirates closing on a point (the player). Used
+ * for the ambush encounter and for a sprung distress trap. Ephemeral like all
+ * agents — added to the live list, never persisted.
+ */
+export function spawnAmbush(count: number, x: number, y: number, rng: Rng): Agent[] {
+  const out: Agent[] = [];
+  for (let i = 0; i < count; i++) {
+    const ang = rng.angle();
+    const d = rng.range(260, 440); // menacing, but not point-blank
+    out.push({
+      id: `ambush:${i}`,
+      type: 'pirate',
+      faction: null,
+      x: x + Math.cos(ang) * d,
+      y: y + Math.sin(ang) * d,
+      vx: 0,
+      vy: 0,
+      heading: rng.angle(),
+      hull: AGENT.warHull,
+      hullMax: AGENT.warHull,
+      radius: AGENT.radius,
+      hostile: true,
+      provoked: false,
+      fireCooldown: rng.range(0, COMBAT.fireCooldown),
+      targetX: 0,
+      targetY: 0,
+    });
+  }
+  return out;
+}
+
 // --- per-frame sim -----------------------------------------------------------
 
 /**
