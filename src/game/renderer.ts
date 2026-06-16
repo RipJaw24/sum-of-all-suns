@@ -33,6 +33,8 @@ import {
 } from './planetTextures';
 import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
+import { type StationStyle, factionVisual } from './factionVisuals';
+import { habitationVisual } from './habitationVisuals';
 import { GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
 
 const LABEL_STYLE = { fontFamily: 'monospace', fontSize: 11, fill: 0xcdd6f4 } as const;
@@ -68,6 +70,83 @@ function drawHalfEllipse(g: Graphics, ringlet: RingletSpec, from: number, to: nu
   g.stroke({ width: ringlet.width, color: ringlet.color, alpha: ringlet.alpha });
 }
 
+/**
+ * Draw a faction's station silhouette into `g`, centered at the origin, sized
+ * by `s` (half-extent in wu). `tint` is the structure, `accent` the trim/lights.
+ * Pure vector — crisp at any zoom, no baked texture. One family per disposition
+ * (factionVisuals.ts STATION_BY_DISPOSITION), so a region's docks read alike.
+ */
+function drawStationStructure(g: Graphics, style: StationStyle, s: number, tint: string, accent: string): void {
+  switch (style) {
+    case 'ring': {
+      // Merchant: a docking torus on a hub with spokes.
+      g.circle(0, 0, s).stroke({ width: Math.max(2, s * 0.32), color: tint, alpha: 0.9 });
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        g.moveTo(0, 0).lineTo(Math.cos(a) * s, Math.sin(a) * s);
+      }
+      g.stroke({ width: Math.max(1, s * 0.14), color: accent, alpha: 0.8 });
+      g.circle(0, 0, s * 0.34).fill(tint);
+      break;
+    }
+    case 'fortress': {
+      // Militarist: a blocky hex keep with corner turrets.
+      const pts: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        pts.push(Math.cos(a) * s, Math.sin(a) * s);
+      }
+      g.poly(pts).fill({ color: tint, alpha: 0.92 }).stroke({ width: 1.5, color: accent, alpha: 0.9 });
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        g.rect(Math.cos(a) * s - s * 0.12, Math.sin(a) * s - s * 0.12, s * 0.24, s * 0.24).fill(accent);
+      }
+      break;
+    }
+    case 'array': {
+      // Scientific: a hub with dish-tipped sensor arms.
+      g.circle(0, 0, s * 0.4).fill(tint);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const ex = Math.cos(a) * s;
+        const ey = Math.sin(a) * s;
+        g.moveTo(0, 0).lineTo(ex, ey).stroke({ width: Math.max(1, s * 0.12), color: tint, alpha: 0.85 });
+        g.arc(ex, ey, s * 0.45, a + Math.PI - 0.9, a + Math.PI + 0.9).stroke({
+          width: Math.max(1, s * 0.12),
+          color: accent,
+          alpha: 0.9,
+        });
+      }
+      break;
+    }
+    case 'gantry': {
+      // Industrial: a girder frame with cross-beams.
+      g.rect(-s * 0.9, -s * 0.35, s * 1.8, s * 0.7).stroke({ width: Math.max(1.5, s * 0.16), color: tint, alpha: 0.9 });
+      for (let i = -2; i <= 2; i++) {
+        g.moveTo(i * s * 0.36, -s * 0.35).lineTo(i * s * 0.36, s * 0.35);
+      }
+      g.stroke({ width: Math.max(1, s * 0.1), color: accent, alpha: 0.75 });
+      break;
+    }
+    case 'spire': {
+      // Zealot: a tall spire with a glowing tip.
+      g.poly([0, -s * 1.3, s * 0.4, s * 0.4, 0, s * 0.7, -s * 0.4, s * 0.4])
+        .fill({ color: tint, alpha: 0.92 })
+        .stroke({ width: 1, color: accent, alpha: 0.8 });
+      g.circle(0, -s * 1.3, s * 0.18).fill(accent);
+      break;
+    }
+    case 'scavenged': {
+      // Outlaw: asymmetric welded-together chunks.
+      g.rect(-s * 0.8, -s * 0.3, s * 0.9, s * 0.5).fill({ color: tint, alpha: 0.8 });
+      g.rect(s * 0.1, -s * 0.5, s * 0.6, s * 0.8).fill({ color: tint, alpha: 0.7 });
+      g.moveTo(-s, s * 0.2).lineTo(s * 0.9, -s * 0.6).stroke({ width: 1, color: accent, alpha: 0.7 });
+      g.circle(s * 0.4, s * 0.1, s * 0.15).fill(accent);
+      break;
+    }
+  }
+}
+
 /** Starfield camera factor: between nebula (0.15×) and playfield (1×). */
 const STARFIELD_PARALLAX = 0.3;
 
@@ -76,11 +155,29 @@ interface StarNode {
   baseRadius: number;
 }
 
+/** A station rim light: pulses alpha in draw() to read as "powered & busy". */
+interface StationLight {
+  g: Graphics;
+  base: number;
+  amp: number;
+  freq: number;
+  phase: number;
+}
+
+/** Faction-styled dockable structure on a body (§13.2). The `spin` container
+ *  rotates slowly; lights blink. Both are cheap per-frame tweaks, no rebuild. */
+interface StationNode {
+  spin: Container;
+  spinRate: number;
+  lights: StationLight[];
+}
+
 interface BodyNode {
   root: Container;
   body: BodySpec;
   moons: Container[];
   planet: PlanetNode;
+  station: StationNode | null;
 }
 
 /** A textured surface layer; speed scrolls tilePosition.x in draw()
@@ -234,6 +331,11 @@ export class Renderer {
         const ma = moon.initialAngle + ((Math.PI * 2) / moon.orbitPeriodSec) * t;
         node.moons[i]!.position.set(Math.cos(ma) * moon.orbitRadius, Math.sin(ma) * moon.orbitRadius);
       });
+      const st = node.station;
+      if (st) {
+        st.spin.rotation = t * st.spinRate;
+        for (const l of st.lights) l.g.alpha = l.base + l.amp * Math.sin(t * l.freq + l.phase);
+      }
     }
     for (const node of this.gateNodes) {
       // Uncharted gates flicker (§4.5): no steady ping.
@@ -353,11 +455,11 @@ export class Renderer {
         return m;
       });
 
+      let station: StationNode | null = null;
       if (body.station) {
-        const tick = new Graphics()
-          .rect(body.radius + 6, -4, 8, 8)
-          .stroke({ width: 1, color: 0x7fd4ff });
-        root.addChild(tick);
+        const built = this.makeStation(body, spec);
+        root.addChild(built.root);
+        station = built.node;
       }
 
       const label = new Text({ text: body.name, style: LABEL_STYLE });
@@ -367,7 +469,7 @@ export class Renderer {
       root.addChild(label);
 
       this.bodyLayer.addChild(root);
-      this.bodyNodes.push({ root, body, moons, planet });
+      this.bodyNodes.push({ root, body, moons, planet, station });
     }
   }
 
@@ -489,6 +591,51 @@ export class Renderer {
     back.rotation = tilt;
     front.rotation = tilt;
     return { back, front };
+  }
+
+  /**
+   * §13.2 station node sitting just off a body's edge. Silhouette from the
+   * controlling faction's disposition, structure tinted by its color (a
+   * contested system swaps in a warning accent), scale + light count from the
+   * system's habitation tier. Unaligned frontier → a neutral relay.
+   */
+  private makeStation(body: BodySpec, spec: SystemSpec): { root: Container; node: StationNode } {
+    const fv = spec.faction ? factionVisual(spec.faction.id) : null;
+    const hv = habitationVisual(spec.habitation);
+    const tint = fv?.tint ?? '#8aa0b8';
+    const accent = spec.faction?.contested ? '#ffb35e' : (fv?.accent ?? '#cdd6f4');
+    const style: StationStyle = fv?.stationStyle ?? 'ring';
+    const size = 9 * hv.stationScale;
+    const rng = new Rng(hash128(`${spec.seed}/station:${body.id}`));
+
+    const root = new Container();
+    root.position.set(body.radius + 16 + size, 0);
+
+    // Dockable affordance: a faint static halo (a cue, not the exact range).
+    const halo = new Graphics().circle(0, 0, size * 2.4).stroke({ width: 1, color: accent, alpha: 0.18 });
+    root.addChild(halo);
+
+    const spin = new Container();
+    const structure = new Graphics();
+    drawStationStructure(structure, style, size, tint, accent);
+    spin.addChild(structure);
+
+    // Blinking rim lights; count rises with habitation (sterile relay → teeming hub).
+    const lights: StationLight[] = [];
+    const count = Math.round(hv.stationLights * 6);
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + rng.range(-0.2, 0.2);
+      const r = size * 1.15;
+      const g = new Graphics()
+        .circle(Math.cos(ang) * r, Math.sin(ang) * r, Math.max(1, size * 0.12))
+        .fill(accent);
+      spin.addChild(g);
+      lights.push({ g, base: 0.5, amp: 0.5, freq: rng.range(2, 5), phase: rng.angle() });
+    }
+
+    root.addChild(spin);
+    const spinRate = rng.range(0.12, 0.3) * (rng.chance(0.5) ? 1 : -1);
+    return { root, node: { spin, spinRate, lights } };
   }
 
   private buildGates(): void {

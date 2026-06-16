@@ -355,6 +355,9 @@ async function boot(): Promise<void> {
         return a;
       },
       extractPixels: () => renderer.extractPixels(),
+      // Live animation clock (accumulated unpaused time) — lets verify/
+      // screenshot scripts compute where an orbiting body is drawn right now.
+      clock: () => clock,
     });
   }
 
