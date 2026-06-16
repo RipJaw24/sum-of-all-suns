@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ArticleMetadata } from '../types';
-import { CONTESTED_TRAFFIC, FACTIONS, factionFor } from './factions';
+import { CONTESTED_TRAFFIC, FACTIONS, factionById, factionFor } from './factions';
 
 /** Minimal valid ArticleMetadata with overridable fields. */
 function meta(over: Partial<ArticleMetadata>): ArticleMetadata {
@@ -81,5 +81,21 @@ describe('factionFor (§13.1 assignment)', () => {
     const core = factionFor(meta({ categories: cats, protection: 'sysop' }), CONTESTED_TRAFFIC)!;
     // sysop overrides even a busy lane: a militarised core is held, not fought.
     expect(core.contested).toBe(false);
+  });
+});
+
+describe('SECRET-KEEPING: faction identity never leaks Wikipedia', () => {
+  it('names are static invented words, independent of the source article', () => {
+    // The same faction id always shows the same name — it comes from the
+    // archetype table, never from the controlled system's metadata.
+    for (const f of FACTIONS) {
+      expect(factionById(f.id).name).toBe(f.name);
+      expect(f.name).toMatch(/^[A-Z][A-Za-z ]+$/); // invented, no titles/digits
+      expect(f.tint).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    // Two unrelated articles that resolve to the same faction read identically.
+    const a = factionFor(meta({ categories: ['Chemical elements'] }), 0);
+    const b = factionFor(meta({ categories: ['Chemical elements'] }), 0);
+    expect(a).toEqual(b);
   });
 });

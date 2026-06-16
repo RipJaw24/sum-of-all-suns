@@ -29,7 +29,7 @@ import {
   rollEncounter,
   seededEvent,
 } from './events';
-import { adjustStanding, standingOf } from './reputation';
+import { adjustStanding, effectiveGoodPrice, standingOf } from './reputation';
 import { factionById } from '../gen/factions';
 import {
   ArticleCache,
@@ -325,6 +325,35 @@ async function boot(): Promise<void> {
       projectilesNow: () => projectiles,
       beaconNow: () => beacon,
       event: seededEvent(spec),
+      // §13.3 verify: effective (faction/standing-adjusted) price for a good.
+      effectivePrice: (id: string) => effectiveGoodPrice(spec, run, id),
+      // verify-m5 hostile harness: a close pirate dead ahead, aimed at the
+      // player and ready to fire. Placed just beyond the muzzle (player shots
+      // spawn 14 wu ahead) so a forward shot connects on the first frame —
+      // drives the REAL combat path under ?debug (no faked deaths).
+      spawnHostileAhead: (hull = 5): Agent => {
+        const h = ship.heading;
+        const a: Agent = {
+          id: `test:${agents.length}`,
+          type: 'pirate',
+          faction: null,
+          x: ship.x + Math.cos(h) * 30,
+          y: ship.y + Math.sin(h) * 30,
+          vx: 0,
+          vy: 0,
+          heading: h + Math.PI, // facing the player
+          hull,
+          hullMax: Math.max(hull, 30),
+          radius: 9,
+          hostile: true,
+          provoked: false,
+          fireCooldown: 0,
+          targetX: 0,
+          targetY: 0,
+        };
+        agents.push(a);
+        return a;
+      },
       extractPixels: () => renderer.extractPixels(),
     });
   }
