@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "seed": "93aa7778820a5a88cb8fabe5da2f8615",
   "sourceTitle": "Mercury",
   "name": "Hasenom",
@@ -92,5 +92,8 @@
     "nebulaSeed": "e63fe5e2385b8a5670b24cdcaed62368",
     "hazard": "debris"
   },
+  "faction": null,
+  "habitation": "frontier",
+  "biome": "barren",
   "traffic": 0.739
 }

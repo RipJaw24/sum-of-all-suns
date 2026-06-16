@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { GATES_MAX, GATES_MIN, MAX_BODIES, type SystemSpec } from '../types';
+import { factionById } from './factions';
 import { gateFuelFactor, generateSystem, unchartedOutcomeFor } from './generate';
 import {
   bioluminescentBay,
@@ -208,6 +209,8 @@ describe('structural invariants', () => {
         ...sys.bodies.flatMap((b) => b.moons.map((m) => m.name)),
         ...sys.bodies.map((b) => b.station?.name ?? ''),
         ...sys.gates.map((g) => g.destinationName),
+        // M5: the faction name (HUD + Decrypt) is a visible surface too.
+        sys.faction ? factionById(sys.faction.id).name : '',
       ]
         .join(' ')
         .toLowerCase();

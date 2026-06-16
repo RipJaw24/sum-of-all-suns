@@ -15,6 +15,7 @@ import { normalizeTitle } from '../rng';
 import { STUB_BYTES, type ArticleMetadata, type LinkMeta, type SectionMeta } from '../types';
 
 const API = 'https://en.wikipedia.org/w/api.php';
+const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 const PAGEVIEWS_API = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article';
 const API_USER_AGENT = 'SumOfAllSuns/0.1 (prototype; maxshippee@gmail.com)';
 
@@ -96,23 +97,46 @@ interface PageBasics {
   categories: string[];
   linkTitles: string[];
   isDisambiguation: boolean;
+  /** §17.1 — edit-protection level, defaulted to 'none' when unprotected. */
+  protection: 'none' | 'autoconfirmed' | 'sysop';
+  /** §17.1 — interlanguage link count. */
+  languageCount: number;
+  /** §17.1 — Wikidata Q-id, if the page is linked to one. */
+  wikidataId?: string;
+}
+
+/** Map a MediaWiki `protection` array to our coarse §13 enum. We only read
+ *  the `edit` restriction; 'extendedconfirmed' folds into 'autoconfirmed'
+ *  (both read as "contested border"), 'sysop' is the militarised core. */
+export function protectionLevel(
+  protection: any[] | undefined,
+): 'none' | 'autoconfirmed' | 'sysop' {
+  const edit = (protection ?? []).find((p) => p?.type === 'edit');
+  const level = String(edit?.level ?? '');
+  if (level === 'sysop') return 'sysop';
+  if (level === 'autoconfirmed' || level === 'extendedconfirmed') return 'autoconfirmed';
+  return 'none';
 }
 
 async function fetchBasics(title: string): Promise<PageBasics> {
   const data = await apiGet({
     action: 'query',
-    prop: 'info|categories|links|pageprops',
-    inprop: 'length',
+    // §17.1: langlinks + inprop=protection ride in the SAME batched call;
+    // wikibase_item comes back in pageprops (already requested). Nearly free.
+    prop: 'info|categories|links|langlinks|pageprops',
+    inprop: 'length|protection',
     plnamespace: '0',
     pllimit: '500',
     cllimit: '500',
-    ppprop: 'disambiguation',
+    lllimit: 'max',
+    ppprop: 'disambiguation|wikibase_item',
     redirects: '1',
     titles: title,
   });
   const pages = data?.query?.pages ?? {};
   const page: any = Object.values(pages)[0];
   if (!page || page.missing !== undefined) throw new Error(`article not found: ${title}`);
+  const wikidataId = page.pageprops?.wikibase_item;
   return {
     byteLength: page.length ?? 0,
     categories: (page.categories ?? []).map((c: any) =>
@@ -122,7 +146,41 @@ async function fetchBasics(title: string): Promise<PageBasics> {
       .map((l: any) => String(l.title))
       .filter((t: string) => !isJunkLink(t)),
     isDisambiguation: page.pageprops?.disambiguation !== undefined,
+    protection: protectionLevel(page.protection),
+    languageCount: (page.langlinks ?? []).length,
+    ...(wikidataId ? { wikidataId: String(wikidataId) } : {}),
   };
+}
+
+/**
+ * §17.2 — resolve a Wikidata Q-id to its `instance of` (P31) Q-ids. A SEPARATE
+ * round-trip to wikidata.org (CC0 — no attribution constraint, §17 note).
+ * NEVER fails the snapshot: P31 is the *primary* faction/habitation lever when
+ * present, but category hashing is the load-bearing fallback (decided
+ * 2026-06-14), so a failure here just leaves `instanceOf` undefined.
+ */
+async function fetchWikidataInstanceOf(qid: string): Promise<string[] | undefined> {
+  try {
+    const qs = new URLSearchParams({
+      format: 'json',
+      origin: '*',
+      action: 'wbgetentities',
+      ids: qid,
+      props: 'claims',
+      // P31 is all we need; trim the payload hard.
+      languages: 'en',
+    });
+    const res = await fetch(`${WIKIDATA_API}?${qs}`);
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    const claims = data?.entities?.[qid]?.claims?.P31 ?? [];
+    const ids = claims
+      .map((c: any) => c?.mainsnak?.datavalue?.value?.id)
+      .filter((id: unknown): id is string => typeof id === 'string');
+    return ids.length > 0 ? ids : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 interface LinkInfo {
@@ -274,6 +332,12 @@ export async function fetchArticleMetadata(rawTitle: string): Promise<ArticleMet
   const infoTargets = orderedTitles.slice(0, LINK_INFO_BUDGET);
   const linkInfo = await fetchLinkInfo(infoTargets);
 
+  // §17.2: one extra hop for P31, only when a Q-id exists. Guarded inside
+  // fetchWikidataInstanceOf — never gates the snapshot (§17.5).
+  const instanceOf = basics.wikidataId
+    ? await fetchWikidataInstanceOf(basics.wikidataId)
+    : undefined;
+
   const links: LinkMeta[] = infoTargets.map((linkTitle, i) => {
     const info = linkInfo.get(linkTitle);
     return {
@@ -290,7 +354,7 @@ export async function fetchArticleMetadata(rawTitle: string): Promise<ArticleMet
   });
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     title,
     byteLength: basics.byteLength,
     sections: parseInfo.sections,
@@ -301,5 +365,11 @@ export async function fetchArticleMetadata(rawTitle: string): Promise<ArticleMet
     pageviews60d,
     isDisambiguation: basics.isDisambiguation,
     snapshotAt: new Date().toISOString(),
+    // M5 §17 signals — protection/languageCount always known from the batched
+    // call; wikidataId/instanceOf only when the page resolves to Wikidata.
+    protection: basics.protection,
+    languageCount: basics.languageCount,
+    ...(basics.wikidataId ? { wikidataId: basics.wikidataId } : {}),
+    ...(instanceOf ? { instanceOf } : {}),
   };
 }

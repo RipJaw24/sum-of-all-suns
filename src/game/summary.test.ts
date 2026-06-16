@@ -96,6 +96,17 @@ describe('routeText (share/export)', () => {
     expect(text).toContain('3. Byzantine Empire  [wormhole]');
   });
 
+  it('decrypt names the faction that held each system (§13.3)', () => {
+    const run = deadRun();
+    run.route[0]!.faction = 'helion_compact';
+    run.route[1]!.faction = null; // unaligned frontier
+    const text = routeText(run, true);
+    expect(text).toContain('Photosynthesis · Helion Compact');
+    expect(text).toContain('Chloroplast · Unaligned');
+    // The political layer stays hidden until decrypt — encrypted withholds it.
+    expect(routeText(run, false)).not.toContain('Helion Compact');
+  });
+
   it('outcome and stats are included', () => {
     const run = deadRun();
     expect(summaryTitle(run)).toContain('HULL BREACH');
@@ -103,6 +114,8 @@ describe('routeText (share/export)', () => {
     expect(summaryTitle(run)).toContain('ADRIFT');
     run.deathCause = 'abandoned';
     expect(summaryTitle(run)).toContain('ABANDONED');
+    run.deathCause = 'destroyed';
+    expect(summaryTitle(run)).toContain('DESTROYED IN COMBAT');
     expect(statsLine(run)).toContain('2 jumps');
     expect(statsLine(run)).toContain('3 systems');
   });

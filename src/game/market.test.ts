@@ -9,6 +9,7 @@ import { GOODS } from '../gen/goods';
 import type { SystemSpec } from '../types';
 import { buyGood, sellGood } from './dock';
 import { MARKET_MIN_GOODS, cargoValue, marketGoodIds, priceFor } from './market';
+import { effectiveGoodPrice } from './reputation';
 import { CARGO_MAX, cargoCount, newRun } from './run';
 
 const standard = generateSystem(photosynthesis);
@@ -16,7 +17,7 @@ const standard = generateSystem(photosynthesis);
 /** Minimal spec; pricing only reads seed + traffic (+ bodies for listings). */
 function fakeSpec(over: Partial<SystemSpec>): SystemSpec {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     seed: 'feedfacefeedfacefeedfacefeedface',
     sourceTitle: 'Fake',
     name: 'Fake',
@@ -25,6 +26,9 @@ function fakeSpec(over: Partial<SystemSpec>): SystemSpec {
     bodies: [],
     gates: [],
     ambient: { paletteId: 0, nebulaSeed: 'n' },
+    faction: null,
+    habitation: 'sterile',
+    biome: 'barren',
     traffic: 0,
     ...over,
   } as SystemSpec;
@@ -85,12 +89,15 @@ describe('marketGoodIds', () => {
 });
 
 describe('buy/sell (dock.ts transactions)', () => {
-  it('same-station buy-then-sell is credit-neutral', () => {
+  it('same-station buy-then-sell is credit-neutral (at faction-adjusted prices)', () => {
     const run = newRun('Photosynthesis');
     const before = run.credits;
+    // standard is Photosynthesis -> helion_compact (merchant): trade is biased
+    // below the base priceFor, but buy and sell share the multiplier so the
+    // roundtrip is still a no-op (market.ts invariant survives M5 pricing).
     expect(buyGood(run, standard, commonGood.id)).toBe(true);
     expect(cargoCount(run)).toBe(1);
-    expect(run.credits).toBe(before - priceFor(standard, commonGood.id));
+    expect(run.credits).toBe(before - effectiveGoodPrice(standard, run, commonGood.id));
     expect(sellGood(run, standard, commonGood.id)).toBe(true);
     expect(run.credits).toBe(before);
     expect(cargoCount(run)).toBe(0);

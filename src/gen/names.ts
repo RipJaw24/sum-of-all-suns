@@ -41,16 +41,27 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** One generated word of 1–3 syllables. */
-function word(rng: Rng, minSyl: number, maxSyl: number): string {
+/** One generated word of 1–3 syllables. `onsets` lets a caller bias the
+ *  consonant flavor (faction phoneme style, §13.2) WITHOUT changing the draw
+ *  sequence — it's still exactly one pick per onset, so swapping the pool can
+ *  never shift a downstream value (e.g. a station's priceLevel). */
+function word(rng: Rng, minSyl: number, maxSyl: number, onsets: readonly string[] = ONSETS): string {
   const syllables = rng.int(minSyl, maxSyl + 1);
   let w = '';
   for (let i = 0; i < syllables; i++) {
-    w += rng.pick(ONSETS) + rng.pick(NUCLEI);
+    w += rng.pick(onsets) + rng.pick(NUCLEI);
     // Codas mostly on the final syllable; mid-word codas get muddy.
     if (i === syllables - 1 || rng.chance(0.2)) w += rng.pick(CODAS);
   }
   return capitalize(w);
+}
+
+/** Onset pool biased toward a faction's phonemes (§13.2). The faction set is
+ *  weighted ~3× against the neutral table so a region's stations sound like
+ *  "theirs" while keeping variety. Pure data — the pick is still one draw. */
+function onsetPool(factionPhonemes?: readonly string[]): readonly string[] {
+  if (!factionPhonemes || factionPhonemes.length === 0) return ONSETS;
+  return [...ONSETS, ...factionPhonemes, ...factionPhonemes, ...factionPhonemes];
 }
 
 /**
@@ -79,9 +90,12 @@ export function moonName(parentBodyName: string, index: number): string {
   return `${parentBodyName}${String.fromCharCode(97 + index)}`;
 }
 
-/** Station name, drawn from the caller's seeded stream. */
-export function stationName(rng: Rng): string {
-  return `${rng.pick(STATION_PREFIX)} ${word(rng, 1, 2)}`;
+/** Station name, drawn from the caller's seeded stream. `factionPhonemes`
+ *  (§13.2) biases the generated word's consonants toward the controlling
+ *  faction; omitted (unaligned frontier) → the neutral table. Draw count is
+ *  identical either way, so callers' later draws are unaffected. */
+export function stationName(rng: Rng, factionPhonemes?: readonly string[]): string {
+  return `${rng.pick(STATION_PREFIX)} ${word(rng, 1, 2, onsetPool(factionPhonemes))}`;
 }
 
 /** One laundered word from the caller's stream (lore fragments, M3). */

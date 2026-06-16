@@ -17,7 +17,20 @@
  */
 
 import { generateSystem } from '../gen/generate';
+import { Rng, hash128 } from '../rng';
 import type { BodySpec, GateSpec, SystemSpec } from '../types';
+import { type Agent, populate, spawnAmbush, stepAgents } from './agents';
+import { COMBAT, type Projectile, fireAgentShot, firePlayerShot, stepProjectiles } from './combat';
+import {
+  type DistressBeacon,
+  ambushSize,
+  makeDistress,
+  resolveDistress,
+  rollEncounter,
+  seededEvent,
+} from './events';
+import { adjustStanding, effectiveGoodPrice, standingOf } from './reputation';
+import { factionById } from '../gen/factions';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -110,7 +123,21 @@ type Interactable =
   | { kind: 'dock'; body: BodySpec }
   | { kind: 'mine'; body: BodySpec }
   | { kind: 'skim'; body: BodySpec }
-  | { kind: 'salvage'; derelict: Derelict };
+  | { kind: 'salvage'; derelict: Derelict }
+  | { kind: 'distress'; beacon: DistressBeacon };
+
+/** Placeholder NPC color: hostiles red, else by type (§15.2). */
+function agentColor(a: Agent): string {
+  if (a.hostile) return '#ff6b4a';
+  switch (a.type) {
+    case 'patrol':
+      return '#7fd4ff';
+    case 'trader':
+      return '#9ee887';
+    default:
+      return '#aab0c0';
+  }
+}
 
 async function boot(): Promise<void> {
   // Two canvases (index.html): Pixi world in #game, 2D text overlays in
@@ -159,6 +186,12 @@ async function boot(): Promise<void> {
   let spec!: SystemSpec;
   let gates: GateSpec[] = [];
   let derelicts: Derelict[] = [];
+  // §15 ephemeral encounter state — re-seeded per system, never persisted.
+  let agents: Agent[] = [];
+  let projectiles: Projectile[] = [];
+  let beacon: DistressBeacon | null = null; // §16 distress encounter
+  let encounterRng = new Rng(hash128('encounter'));
+  let playerFireCd = 0;
   let lastSource: ArticleSource = 'cache';
   let mapOpen = false;
   let siteOpen = false; // [Q] scan panel (site.ts), only while a body is near
@@ -192,6 +225,19 @@ async function boot(): Promise<void> {
     return derelictsFor(spec).filter((d) => !isLooted(run, spec.sourceTitle, d.id));
   }
 
+  /** §13: the controlling faction + standing block for the HUD (null = the
+   *  unaligned frontier). Assembled here where spec + run + reputation meet. */
+  function factionHud(): HudState['faction'] {
+    if (!spec.faction) return null;
+    const arch = factionById(spec.faction.id);
+    return {
+      name: arch.name,
+      tint: arch.tint,
+      contested: spec.faction.contested,
+      standing: standingOf(run, spec.faction.id),
+    };
+  }
+
   async function enterSystem(t: number): Promise<void> {
     const { meta, source } = await cache.get(run.currentTitle);
     lastSource = source;
@@ -199,6 +245,18 @@ async function boot(): Promise<void> {
     gates = gatesFor(spec, run.previousTitle);
     derelicts = unlootedDerelicts();
     siteOpen = false;
+
+    // §13.3: stamp this visit's controlling faction onto the route log for the
+    // Decrypt reveal (the last entry is always the current system).
+    const here = run.route[run.route.length - 1];
+    if (here && here.title === run.currentTitle) here.faction = spec.faction?.id ?? null;
+
+    // §15: seed a fresh, reproducible NPC spawn for this system; the old
+    // encounter is despawned (agents are ephemeral, never persisted).
+    encounterRng = new Rng(hash128(`${spec.seed}/encounter`));
+    agents = populate(spec, run, encounterRng);
+    projectiles = [];
+    playerFireCd = 0;
 
     // Spawn at the gate that leads back where we came from (it always
     // exists after a jump, §4.2); fresh runs start in open space.
@@ -223,6 +281,19 @@ async function boot(): Promise<void> {
     renderer.setSystem(spec);
     // §8: warm the cache for every reachable system so jumps never stall.
     cache.prefetch(gates.map((g) => g.destinationTitle));
+
+    // §16 random events: the deterministic system flavor (same for everyone),
+    // then an ephemeral encounter roll. Ship is positioned by now, so an
+    // ambush can close on the player; a distress call drops a beacon to find.
+    beacon = null;
+    toast(seededEvent(spec).headline, t);
+    const encounter = rollEncounter(spec, run, encounterRng);
+    if (encounter === 'ambush') {
+      agents.push(...spawnAmbush(ambushSize(encounterRng), ship.x, ship.y, encounterRng));
+      toast('AMBUSH — HOSTILES INBOUND', t);
+    } else if (encounter === 'distress') {
+      beacon = makeDistress(spec, encounterRng);
+    }
 
     // §4.5 hazard pocket: one-time hull hit on first-ever entry.
     if (spec.kind === 'hazard_pocket' && !isLooted(run, spec.sourceTitle, 'entry-hazard')) {
@@ -249,6 +320,40 @@ async function boot(): Promise<void> {
       market: marketGoodIds(spec),
       priceFor: (id: string) => priceFor(spec, id),
       derelictsNow: () => derelicts,
+      // §15/§16 verify hooks: live encounter state (ephemeral, never persisted).
+      agentsNow: () => agents,
+      projectilesNow: () => projectiles,
+      beaconNow: () => beacon,
+      event: seededEvent(spec),
+      // §13.3 verify: effective (faction/standing-adjusted) price for a good.
+      effectivePrice: (id: string) => effectiveGoodPrice(spec, run, id),
+      // verify-m5 hostile harness: a close pirate dead ahead, aimed at the
+      // player and ready to fire. Placed just beyond the muzzle (player shots
+      // spawn 14 wu ahead) so a forward shot connects on the first frame —
+      // drives the REAL combat path under ?debug (no faked deaths).
+      spawnHostileAhead: (hull = 5): Agent => {
+        const h = ship.heading;
+        const a: Agent = {
+          id: `test:${agents.length}`,
+          type: 'pirate',
+          faction: null,
+          x: ship.x + Math.cos(h) * 30,
+          y: ship.y + Math.sin(h) * 30,
+          vx: 0,
+          vy: 0,
+          heading: h + Math.PI, // facing the player
+          hull,
+          hullMax: Math.max(hull, 30),
+          radius: 9,
+          hostile: true,
+          provoked: false,
+          fireCooldown: 0,
+          targetX: 0,
+          targetY: 0,
+        };
+        agents.push(a);
+        return a;
+      },
       extractPixels: () => renderer.extractPixels(),
     });
   }
@@ -334,6 +439,10 @@ async function boot(): Promise<void> {
       const d = Math.hypot(derelict.x - ship.x, derelict.y - ship.y);
       consider(d, INTERACT_RANGE, () => ({ kind: 'salvage', derelict }));
     }
+    if (beacon) {
+      const d = Math.hypot(beacon.x - ship.x, beacon.y - ship.y);
+      consider(d, INTERACT_RANGE, () => ({ kind: 'distress', beacon: beacon! }));
+    }
     return best;
   }
 
@@ -389,6 +498,8 @@ async function boot(): Promise<void> {
           : { text: `[hold E] Skim fuel — slow, hazardous`, tone: 'ok' };
       case 'salvage':
         return { text: '[E] Salvage derelict', tone: 'ok' };
+      case 'distress':
+        return { text: '[E] Answer distress call', tone: 'ok' };
     }
   }
 
@@ -447,6 +558,29 @@ async function boot(): Promise<void> {
         saveRun(run);
         audio.pickup();
         toast(`+${target.derelict.fuel} fuel, +${target.derelict.credits} cr — SALVAGED`, t);
+        return;
+      }
+      case 'distress': {
+        // §16.2: a genuine call rewards + earns goodwill; a trap springs an
+        // ambush at the beacon. resolveDistress decides; main applies it.
+        const outcome = resolveDistress(target.beacon, spec, encounterRng);
+        beacon = null;
+        if (outcome.trap) {
+          agents.push(
+            ...spawnAmbush(ambushSize(encounterRng), target.beacon.x, target.beacon.y, encounterRng),
+          );
+          audio.damage();
+          toast('IT WAS A TRAP — HOSTILES DECLOAK', t);
+        } else {
+          addCredits(run, outcome.credits);
+          addFuel(run, outcome.fuel);
+          if (outcome.standingFaction) {
+            adjustStanding(run, outcome.standingFaction, outcome.standingDelta);
+          }
+          saveRun(run);
+          audio.pickup();
+          toast(`DISTRESS ANSWERED — +${outcome.credits} cr, +${outcome.fuel} fuel`, t);
+        }
         return;
       }
       case 'skim':
@@ -595,9 +729,60 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
+    drawEncounter();
+  }
+
+  /** §15 placeholder NPC/projectile render on the 2D overlay (world→screen via
+   *  the ship-centered camera). M6 gives agents real sprites in the GL scene. */
+  function drawEncounter(): void {
+    const cx = canvas.width / 2 - ship.x;
+    const cy = canvas.height / 2 - ship.y;
+    if (beacon) {
+      const bx = beacon.x + cx;
+      const by = beacon.y + cy;
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+      ctx.strokeStyle = `rgba(255, 210, 90, ${0.35 + 0.45 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by, 9 + 5 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 210, 90, 0.85)';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('distress beacon', bx, by + 26);
+      ctx.textAlign = 'left';
+    }
+    for (const p of projectiles) {
+      ctx.fillStyle = p.fromPlayer ? '#7fd4ff' : '#ff6b4a';
+      ctx.beginPath();
+      ctx.arc(p.x + cx, p.y + cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const a of agents) {
+      const sx = a.x + cx;
+      const sy = a.y + cy;
+      if (sx < -40 || sy < -40 || sx > canvas.width + 40 || sy > canvas.height + 40) continue;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(a.heading);
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-7, 6);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(-7, -6);
+      ctx.closePath();
+      ctx.fillStyle = agentColor(a);
+      ctx.fill();
+      ctx.restore();
+      if (a.hull < a.hullMax) {
+        ctx.fillStyle = 'rgba(255, 107, 74, 0.85)';
+        ctx.fillRect(sx - 8, sy - 12, 16 * Math.max(0, a.hull / a.hullMax), 2);
+      }
+    }
   }
 
   function frameFlying(t: number, dt: number): void {
@@ -673,6 +858,45 @@ async function boot(): Promise<void> {
       }
     }
 
+    // §15 light combat: player fire, agent AI + return fire, projectile sim.
+    if (!jumping && !dying) {
+      playerFireCd -= dt;
+      if ((input.isFiring() || input.isHeld('KeyF')) && playerFireCd <= 0) {
+        projectiles.push(firePlayerShot(ship));
+        playerFireCd = COMBAT.fireCooldown;
+        audio.shoot();
+      }
+      for (const a of stepAgents(agents, ship, run, dt, encounterRng)) {
+        projectiles.push(fireAgentShot(a, ship));
+      }
+      const combat = stepProjectiles(
+        projectiles,
+        agents,
+        ship,
+        run,
+        spec.faction?.id ?? null,
+        dt,
+        encounterRng,
+      );
+      if (combat.playerHit) {
+        damageFlash = 1;
+        audio.damage();
+      }
+      for (const kill of combat.kills) {
+        const extra = [kill.fuel ? `+${kill.fuel} fuel` : '', kill.goodId ? '+cargo' : '']
+          .filter(Boolean)
+          .join(', ');
+        toast(`HOSTILE DOWN — +${kill.bounty} cr${extra ? ` (${extra})` : ''}`, t);
+        audio.explosion();
+      }
+      if (combat.kills.length > 0 || combat.playerHit) saveRun(run);
+      if (combat.playerKilled) {
+        audio.death();
+        dyingUntil = t + DEATH_BEAT_SEC;
+      }
+      if (agents.some((a) => a.hull <= 0)) agents = agents.filter((a) => a.hull > 0);
+    }
+
     // Discrete interactions (skim is held, not pressed).
     if (!jumping && !dying && target && target.kind !== 'skim' && input.wasPressed('KeyE', 'Space')) {
       interact(target, t);
@@ -740,6 +964,7 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: jumping || dying || !target ? null : promptFor(target, skimming),
       ...(nearBody && !siteOpen ? { subPrompt: `[Q] scan ${nearBody.name}` } : {}),
       adrift,
@@ -753,6 +978,7 @@ async function boot(): Promise<void> {
     };
 
     renderer.draw(spec, gates, ship, t, hud, derelicts);
+    if (!jumping) drawEncounter();
     if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
     if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);
 
@@ -784,11 +1010,11 @@ async function boot(): Promise<void> {
     const body = dockedBody!;
     const station = body.station!;
     if (dockView === 'services') {
-      if (input.wasPressed('KeyR') && buyRefuel(run, station)) {
+      if (input.wasPressed('KeyR') && buyRefuel(spec, run, station)) {
         saveRun(run);
         audio.uiSelect();
       }
-      if (input.wasPressed('KeyF') && buyRepair(run, station)) {
+      if (input.wasPressed('KeyF') && buyRepair(spec, run, station)) {
         saveRun(run);
         audio.uiSelect();
       }
@@ -838,11 +1064,12 @@ async function boot(): Promise<void> {
       cargoMax: CARGO_MAX,
       jumps: jumpsMade(run),
       goalJumps: run.goalJumps,
+      faction: factionHud(),
       prompt: null,
     };
     renderer.draw(spec, gates, ship, t, hud, derelicts);
     if (dockView === 'trade') drawTrade(ctx, body, run, spec, tradeCursor);
-    else drawDock(ctx, body, run);
+    else drawDock(ctx, body, run, spec);
   }
 
   function frameSummary(t: number): void {

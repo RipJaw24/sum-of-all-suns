@@ -69,4 +69,34 @@ describe('bodyName / moonName / stationName', () => {
     expect(a).toBe(b);
     expect(a).toMatch(/^[A-Z][a-z]+ [A-Z]/);
   });
+
+  describe('faction phoneme bias (§13.2)', () => {
+    const PHONEMES = ['kr', 'dr', 'ka', 'gor'];
+
+    it('biasing can change the generated name', () => {
+      // Not guaranteed per-seed (the neutral table is still in the pool), but
+      // across many seeds the biased and neutral streams must diverge.
+      let diverged = 0;
+      for (let i = 0; i < 100; i++) {
+        const seed = hash128(`fac-name:${i}`);
+        if (stationName(new Rng(seed)) !== stationName(new Rng(seed), PHONEMES)) diverged++;
+      }
+      expect(diverged).toBeGreaterThan(0);
+    });
+
+    it('CRITICAL: biasing does not change the draw count (priceLevel stays put)', () => {
+      // generate.ts draws a station's priceLevel from the SAME stream right
+      // after stationName. The onset-pool swap must consume identical draws,
+      // or every faction station would silently reprice. Lock it: the rng is
+      // in the same state after either call, so the next draw matches.
+      for (let i = 0; i < 50; i++) {
+        const seed = hash128(`fac-draw:${i}`);
+        const neutral = new Rng(seed);
+        stationName(neutral);
+        const biased = new Rng(seed);
+        stationName(biased, PHONEMES);
+        expect(biased.nextUint32()).toBe(neutral.nextUint32());
+      }
+    });
+  });
 });

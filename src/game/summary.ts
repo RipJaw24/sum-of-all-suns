@@ -11,10 +11,18 @@
  * (unit-tested); drawing stays thin per the renderer.ts rule.
  */
 
+import { factionById } from '../gen/factions';
 import { systemName } from '../gen/names';
 import { hash128 } from '../rng';
 import { GATE_COLORS } from './view';
 import type { RouteEntry, RunState } from './run';
+
+/** §13.3 Decrypt payoff: name the faction that held a visited system. Empty
+ *  for pre-M5 / unstamped entries; "Unaligned" for the frontier. */
+export function factionLabel(entry: RouteEntry): string {
+  if (entry.faction === undefined) return '';
+  return entry.faction === null ? ' · Unaligned' : ` · ${factionById(entry.faction).name}`;
+}
 
 // --- constellation layout -----------------------------------------------------
 
@@ -101,6 +109,8 @@ export function summaryTitle(run: RunState): string {
       return 'RUN OVER — ADRIFT, FUEL EXHAUSTED';
     case 'abandoned':
       return 'RUN ABANDONED';
+    case 'destroyed':
+      return 'RUN OVER — DESTROYED IN COMBAT';
     default:
       return 'RUN OVER — HULL BREACH';
   }
@@ -121,7 +131,7 @@ export function routeText(run: RunState, decrypted: boolean): string {
     '',
   ];
   run.route.forEach((entry, i) => {
-    const label = decrypted ? entry.title : systemName(entry.title);
+    const label = decrypted ? `${entry.title}${factionLabel(entry)}` : systemName(entry.title);
     lines.push(`${String(i + 1).padStart(2)}. ${label}  [${VIA_TAG[entry.via]}]`);
   });
   return lines.join('\n');
@@ -197,7 +207,7 @@ export function drawSummary(
 
     const progress = decrypting ? decryptProgress(i, elapsed) : 0;
     const label = decrypting
-      ? scrambledTitle(entry.title, progress, tick)
+      ? scrambledTitle(entry.title, progress, tick) + (progress >= 1 ? factionLabel(entry) : '')
       : systemName(entry.title);
     ctx.fillStyle =
       decrypting && progress >= 1 ? '#7fd4ff' : 'rgba(205, 214, 244, 0.8)';

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "seed": "e1e012cff20364f6969445778577334e",
   "sourceTitle": "Oxbow lake",
   "name": "Stroustrul Deke Minor",
@@ -81,6 +81,9 @@
     "paletteId": 0,
     "nebulaSeed": "39075b4b80755de815f82ff5ac8a2956"
   },
+  "faction": null,
+  "habitation": "frontier",
+  "biome": "industrial",
   "traffic": 0.364,
   "salvageRichness": 0.78
 }

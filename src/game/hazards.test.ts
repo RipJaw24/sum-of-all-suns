@@ -14,7 +14,7 @@ import {
 import { hazardAt } from './hazards';
 
 const base: SystemSpec = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   seed: '00000000000000000000000000000000',
   sourceTitle: 'Fake',
   name: 'Fake',
@@ -23,6 +23,9 @@ const base: SystemSpec = {
   bodies: [],
   gates: [],
   ambient: { paletteId: 0, nebulaSeed: 'n' },
+  faction: null,
+  habitation: 'sterile',
+  biome: 'barren',
   traffic: 0,
 };
 

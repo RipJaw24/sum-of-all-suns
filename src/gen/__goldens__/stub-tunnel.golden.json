@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "seed": "7f5e9389a2f40cfb8119dae75cb34595",
   "sourceTitle": "Tepui",
   "name": "Binyrkrol",
@@ -94,5 +94,8 @@
     "paletteId": 1,
     "nebulaSeed": "80eb7ed8eac5eb925be5a6ce31cb3384"
   },
+  "faction": null,
+  "habitation": "frontier",
+  "biome": "industrial",
   "traffic": 0.488
 }
