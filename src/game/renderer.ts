@@ -17,13 +17,18 @@ import { NebulaLayer } from './nebula';
 import {
   type Rgb,
   type RingletSpec,
+  type SurfaceTint,
+  atmosphereTexture,
+  cityLightsTexture,
   gasBandTexture,
   gasCloudTexture,
+  hexToRgb,
   iceTexture,
   lavaTextures,
   makeRingletSpecs,
   mixColor,
   moonShadeTexture,
+  nightShadeTexture,
   oceanCloudTexture,
   oceanTexture,
   planetPalette,
@@ -34,7 +39,8 @@ import {
 import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
 import { type StationStyle, factionVisual } from './factionVisuals';
-import { habitationVisual } from './habitationVisuals';
+import { biomeVisual, habitationVisual } from './habitationVisuals';
+import { mixHex } from './palettes';
 import { GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
 
 const LABEL_STYLE = { fontFamily: 'monospace', fontSize: 11, fill: 0xcdd6f4 } as const;
@@ -194,6 +200,9 @@ interface PlanetNode {
   pulse?: { sprite: TilingSprite; base: number; amp: number; freq: number; phase: number };
   /** Axis tilt in radians; rings share it so they sit on the equator. */
   tilt: number;
+  /** §14 atmospheric limb glow, sized & added BEHIND the disc by buildBodies
+   *  so only the limb peeks out. null for airless/gas bodies. */
+  atmosphere: Sprite | null;
 }
 
 interface GateNode {
@@ -434,13 +443,15 @@ export class Renderer {
     this.bodyNodes = [];
     for (const body of spec.bodies) {
       const root = new Container();
-      const planet = this.makePlanet(body, spec.seed);
-      // Ring halves sandwich the sphere so the planet occludes the far side.
+      const planet = this.makePlanet(body, spec);
+      const atmo = planet.atmosphere;
+      // Ring halves sandwich the sphere so the planet occludes the far side;
+      // the atmosphere glow sits just behind the disc so only its limb shows.
       if (body.hasRings) {
         const rings = this.makeRings(body, spec.seed, planet.tilt);
-        root.addChild(rings.back, planet.root, rings.front);
+        root.addChild(rings.back, ...(atmo ? [atmo] : []), planet.root, rings.front);
       } else {
-        root.addChild(planet.root);
+        root.addChild(...(atmo ? [atmo] : []), planet.root);
       }
 
       const moons: Container[] = body.moons.map((moon) => {
@@ -476,11 +487,16 @@ export class Renderer {
   /** Textured sphere for any body type. Gas giants keep their frozen rng
    *  labels and draw order (`gas:${id}:motion`: tilt, band speed, cloud
    *  speed) so existing systems don't reroll. */
-  private makePlanet(body: BodySpec, seed: string): PlanetNode {
+  private makePlanet(body: BodySpec, spec: SystemSpec): PlanetNode {
+    const seed = spec.seed;
     const diameter = body.radius * 2;
     const gas = body.type === 'gas_giant';
     const rng = new Rng(hash128(`${seed}/${gas ? 'gas' : 'planet'}:${body.id}:motion`));
     const tilt = gas ? rng.range(-0.5, 0.5) : rng.range(-0.35, 0.35);
+
+    // §14: tint the surface toward the biome's hue (pure transform, no reroll).
+    const bv = biomeVisual(spec.biome);
+    const tint: SurfaceTint = { color: hexToRgb(bv.surfaceTint), strength: bv.tintStrength };
 
     interface LayerDef {
       texture: Texture;
@@ -502,10 +518,10 @@ export class Renderer {
         });
         break;
       case 'rocky':
-        defs.push({ texture: rockyTexture(seed, body), speed: 0 });
+        defs.push({ texture: rockyTexture(seed, body, tint), speed: 0 });
         break;
       case 'ice':
-        defs.push({ texture: iceTexture(seed, body), speed: 0 });
+        defs.push({ texture: iceTexture(seed, body, tint), speed: 0 });
         break;
       case 'lava': {
         const { crust, glow } = lavaTextures(seed, body);
@@ -514,7 +530,7 @@ export class Renderer {
         break;
       }
       case 'ocean':
-        defs.push({ texture: oceanTexture(seed, body), speed: 0 });
+        defs.push({ texture: oceanTexture(seed, body, tint), speed: 0 });
         defs.push({
           texture: oceanCloudTexture(seed, body),
           speed: rng.range(3, 7) * (rng.chance(0.5) ? 1 : -1),
@@ -561,6 +577,35 @@ export class Renderer {
     shade.width = diameter;
     shade.height = diameter;
 
+    // §14 deepened terminator: a directional night shadow on terrestrial
+    // worlds (not gas/lava, which keep their bright/emissive look).
+    const terrestrial = body.type === 'rocky' || body.type === 'ice' || body.type === 'ocean';
+    let nightShade: Sprite | null = null;
+    if (terrestrial) {
+      nightShade = new Sprite(nightShadeTexture());
+      nightShade.anchor.set(0.5);
+      nightShade.width = diameter;
+      nightShade.height = diameter;
+    }
+
+    // §14 night-side city lights: inhabited, life-bearing worlds only (barren
+    // has lightColor '#000000'; gas/lava don't get cities). Additive, over the
+    // shade so the glow reads against the dark side.
+    const cityLights =
+      bv.lightColor !== '#000000' &&
+      habitationVisual(spec.habitation).cityLights > 0 &&
+      (body.type === 'rocky' || body.type === 'ice' || body.type === 'ocean')
+        ? habitationVisual(spec.habitation).cityLights
+        : 0;
+    let lights: Sprite | null = null;
+    if (cityLights > 0) {
+      lights = new Sprite(cityLightsTexture(seed, body, cityLights, bv.lightColor));
+      lights.anchor.set(0.5);
+      lights.width = diameter;
+      lights.height = diameter;
+      lights.blendMode = 'add';
+    }
+
     const rimColor = gas
       ? 0xf4e8cf
       : rgbToNumber(mixColor(planetPalette(seed, body)[1]!, { r: 255, g: 255, b: 255 }, 0.55));
@@ -570,9 +615,30 @@ export class Renderer {
     const mask = new Graphics().circle(0, 0, body.radius).fill(0xffffff);
     const root = new Container();
     root.mask = mask;
-    root.addChild(spin, shade, rim, mask);
+    root.addChild(
+      spin,
+      shade,
+      ...(nightShade ? [nightShade] : []),
+      ...(lights ? [lights] : []),
+      rim,
+      mask,
+    );
 
-    return { root, layers, ...(pulse ? { pulse } : {}), tilt };
+    // §14 atmosphere: oceans always; inhabited or verdant/civic land worlds too.
+    const hasAtmosphere =
+      body.type === 'ocean' ||
+      ((body.type === 'rocky' || body.type === 'ice') &&
+        (cityLights > 0 || spec.biome === 'verdant' || spec.biome === 'civic'));
+    let atmosphere: Sprite | null = null;
+    if (hasAtmosphere) {
+      const skyHex = mixHex('#9fc6ff', bv.surfaceTint, 0.35);
+      atmosphere = new Sprite(atmosphereTexture(skyHex));
+      atmosphere.anchor.set(0.5);
+      atmosphere.width = diameter * 1.6;
+      atmosphere.height = diameter * 1.6;
+    }
+
+    return { root, layers, ...(pulse ? { pulse } : {}), tilt, atmosphere };
   }
 
   /** Ring system as two Graphics: the upper half-ellipse sits behind the
