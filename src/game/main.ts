@@ -126,19 +126,6 @@ type Interactable =
   | { kind: 'salvage'; derelict: Derelict }
   | { kind: 'distress'; beacon: DistressBeacon };
 
-/** Placeholder NPC color: hostiles red, else by type (§15.2). */
-function agentColor(a: Agent): string {
-  if (a.hostile) return '#ff6b4a';
-  switch (a.type) {
-    case 'patrol':
-      return '#7fd4ff';
-    case 'trader':
-      return '#9ee887';
-    default:
-      return '#aab0c0';
-  }
-}
-
 async function boot(): Promise<void> {
   // Two canvases (index.html): Pixi world in #game, 2D text overlays in
   // #overlay above it. All legacy ctx draws (dock/map/site/summary/fade)
@@ -323,6 +310,8 @@ async function boot(): Promise<void> {
       // §15/§16 verify hooks: live encounter state (ephemeral, never persisted).
       agentsNow: () => agents,
       projectilesNow: () => projectiles,
+      // M6 Phase 4 verify: GL agent-node count must track the live list.
+      agentSpritesNow: () => renderer.agentNodeCount,
       beaconNow: () => beacon,
       event: seededEvent(spec),
       // §13.3 verify: effective (faction/standing-adjusted) price for a good.
@@ -735,12 +724,13 @@ async function boot(): Promise<void> {
       faction: factionHud(),
       prompt: null,
     };
-    renderer.draw(spec, gates, ship, t, hud, derelicts);
+    renderer.draw(spec, gates, ship, t, hud, derelicts, agents, projectiles);
     drawEncounter();
   }
 
-  /** §15 placeholder NPC/projectile render on the 2D overlay (world→screen via
-   *  the ship-centered camera). M6 gives agents real sprites in the GL scene. */
+  /** §15 encounter overlay: agents + projectiles moved into the GL scene at
+   *  M6 Phase 4 (renderer.syncAgents/syncProjectiles); only the distress-
+   *  beacon text affordance still draws here. */
   function drawEncounter(): void {
     const cx = canvas.width / 2 - ship.x;
     const cy = canvas.height / 2 - ship.y;
@@ -758,33 +748,6 @@ async function boot(): Promise<void> {
       ctx.textAlign = 'center';
       ctx.fillText('distress beacon', bx, by + 26);
       ctx.textAlign = 'left';
-    }
-    for (const p of projectiles) {
-      ctx.fillStyle = p.fromPlayer ? '#7fd4ff' : '#ff6b4a';
-      ctx.beginPath();
-      ctx.arc(p.x + cx, p.y + cy, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    for (const a of agents) {
-      const sx = a.x + cx;
-      const sy = a.y + cy;
-      if (sx < -40 || sy < -40 || sx > canvas.width + 40 || sy > canvas.height + 40) continue;
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(a.heading);
-      ctx.beginPath();
-      ctx.moveTo(10, 0);
-      ctx.lineTo(-7, 6);
-      ctx.lineTo(-4, 0);
-      ctx.lineTo(-7, -6);
-      ctx.closePath();
-      ctx.fillStyle = agentColor(a);
-      ctx.fill();
-      ctx.restore();
-      if (a.hull < a.hullMax) {
-        ctx.fillStyle = 'rgba(255, 107, 74, 0.85)';
-        ctx.fillRect(sx - 8, sy - 12, 16 * Math.max(0, a.hull / a.hullMax), 2);
-      }
     }
   }
 
@@ -982,7 +945,16 @@ async function boot(): Promise<void> {
           : {}),
     };
 
-    renderer.draw(spec, gates, ship, t, hud, derelicts);
+    renderer.draw(
+      spec,
+      gates,
+      ship,
+      t,
+      hud,
+      derelicts,
+      jumping ? [] : agents,
+      jumping ? [] : projectiles,
+    );
     if (!jumping) drawEncounter();
     if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
     if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);

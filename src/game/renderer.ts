@@ -36,9 +36,11 @@ import {
   rockyTexture,
   sphereShadeTexture,
 } from './planetTextures';
+import type { Agent } from './agents';
+import type { Projectile } from './combat';
 import type { Derelict } from './salvage';
 import type { ShipState } from './ship';
-import { type StationStyle, factionVisual } from './factionVisuals';
+import { type HullStyle, type StationStyle, factionVisual } from './factionVisuals';
 import { biomeVisual, habitationVisual } from './habitationVisuals';
 import { mixHex } from './palettes';
 import { GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
@@ -153,12 +155,103 @@ function drawStationStructure(g: Graphics, style: StationStyle, s: number, tint:
   }
 }
 
+/** Agent paint: faction livery when owned, else the type-neutral hues the old
+ *  overlay used — so patrol/trader/drifter/pirate still read at a glance. */
+function agentPaint(a: Agent): { base: string; trim: string } {
+  const fv = a.faction ? factionVisual(a.faction) : null;
+  if (fv) return { base: fv.tint, trim: fv.accent };
+  switch (a.type) {
+    case 'trader':
+      return { base: '#9ee887', trim: '#c9f2b6' };
+    case 'pirate':
+      return { base: '#464050', trim: '#ff6b4a' };
+    default: // drifter (patrols always carry a faction)
+      return { base: '#aab0c0', trim: '#d8dce6' };
+  }
+}
+
+/**
+ * Draw an agent hull into `g`, nose at +X, roughly 2×radius long. Silhouette
+ * family by AgentType; faction ships bend toward their disposition's
+ * HullStyle (blocky/utilitarian squared, angular/jagged sharpened) so a
+ * militarist patrol and a merchant escort don't share a body plan.
+ */
+function drawAgentHull(g: Graphics, a: Agent): void {
+  const { base, trim } = agentPaint(a);
+  const r = a.radius;
+  const style: HullStyle | null = a.faction ? factionVisual(a.faction).hullStyle : null;
+  const boxy = style === 'blocky' || style === 'utilitarian';
+  const sharp = style === 'angular' || style === 'jagged';
+  switch (a.type) {
+    case 'trader': {
+      // Freighter: cargo pods astern of a spine, cab at the nose.
+      g.rect(-r * 1.1, -r * 0.3, r * 1.7, r * 0.6).fill({ color: base, alpha: 0.9 });
+      g.rect(-r * 1.05, -r * 0.85, r * 0.75, r * 1.7).fill({ color: base, alpha: 0.72 });
+      g.rect(-r * 0.15, -r * 0.7, r * 0.55, r * 1.4).fill({ color: base, alpha: 0.72 });
+      if (boxy) g.rect(r * 0.5, -r * 0.4, r * 0.7, r * 0.8).fill(trim);
+      else g.poly([r * 1.25, 0, r * 0.5, r * 0.42, r * 0.5, -r * 0.42]).fill(trim);
+      break;
+    }
+    case 'patrol': {
+      // Fighter: winged dart; nose length follows the disposition family.
+      const nose = sharp ? r * 1.45 : boxy ? r * 1.05 : r * 1.25;
+      g.poly([0, r * 0.25, -r * 0.75, r * 0.95, -r * 1.0, r * 0.7, -r * 0.45, r * 0.18])
+        .poly([0, -r * 0.25, -r * 0.75, -r * 0.95, -r * 1.0, -r * 0.7, -r * 0.45, -r * 0.18])
+        .fill({ color: base, alpha: 0.8 });
+      g.poly([nose, 0, -r * 0.2, r * 0.45, -r * 0.85, r * 0.3, -r * 0.85, -r * 0.3, -r * 0.2, -r * 0.45])
+        .fill(base)
+        .stroke({ width: 1, color: trim, alpha: 0.85 });
+      g.circle(r * 0.25, 0, r * 0.16).fill(trim);
+      break;
+    }
+    case 'pirate': {
+      // Raider: asymmetric jagged blades, a slash of accent across the hull.
+      g.poly([
+        r * 1.3, 0,
+        -r * 0.2, r * 0.55,
+        -r * 1.0, r * 0.95,
+        -r * 0.55, r * 0.15,
+        -r * 0.8, -r * 0.75,
+        -r * 0.3, -r * 0.5,
+      ])
+        .fill({ color: base, alpha: 0.95 })
+        .stroke({ width: 1, color: trim, alpha: 0.75 });
+      g.moveTo(r * 0.6, -r * 0.12).lineTo(-r * 0.5, r * 0.35).stroke({ width: 1.2, color: trim, alpha: 0.9 });
+      break;
+    }
+    case 'drifter': {
+      // Tug: rounded pod, cabin nub, a trailing antenna.
+      g.ellipse(0, 0, r * 0.9, r * 0.55).fill({ color: base, alpha: 0.9 });
+      g.rect(r * 0.35, -r * 0.26, r * 0.55, r * 0.52).fill({ color: trim, alpha: 0.85 });
+      g.moveTo(-r * 0.9, 0).lineTo(-r * 1.3, 0).stroke({ width: 1, color: trim, alpha: 0.6 });
+      g.circle(-r * 1.3, 0, r * 0.1).fill(trim);
+      break;
+    }
+  }
+}
+
 /** Starfield camera factor: between nebula (0.15×) and playfield (1×). */
 const STARFIELD_PARALLAX = 0.3;
 
 interface StarNode {
   root: Container;
   baseRadius: number;
+}
+
+/** GL node for one live NPC (§15). Membership churns via a create/destroy-
+ *  by-id diff in syncAgents; transforms update every frame in draw(). */
+interface AgentNode {
+  root: Container;
+  /** Rotates with the agent's heading: trail + hull. */
+  shipC: Container;
+  trail: Sprite;
+  /** Pulsing threat ring, visible only while the agent is hostile. */
+  hostileRing: Graphics;
+  /** Unrotated hull bar above the ship; fg scale.x = hull fraction. */
+  bar: Container;
+  barFg: Graphics;
+  /** Per-agent flicker/pulse phase (hashed from id — no rng draw). */
+  phase: number;
 }
 
 /** A station rim light: pulses alpha in draw() to read as "powered & busy". */
@@ -222,7 +315,11 @@ export class Renderer {
   private readonly bodyLayer = new Container();
   private readonly derelictLayer = new Container();
   private readonly gateLayer = new Container();
+  private readonly agentLayer = new Container();
+  private readonly projectileLayer = new Container();
   private readonly ship = new Container();
+  /** Shared white radial glow; tinted per use (trails, tracers). */
+  private readonly glowTex = glowTexture('#ffffff');
   private readonly shipGlow: Sprite;
   private readonly shipShield = new Graphics();
   /** 0..1 eased thrust level; the plume ramps rather than snapping. */
@@ -233,6 +330,9 @@ export class Renderer {
   private bodyNodes: BodyNode[] = [];
   private gateNodes: GateNode[] = [];
   private derelictIds = '';
+  private agentNodes = new Map<string, AgentNode>();
+  /** Tracer sprite pool; grows to the high-water mark, never shrinks. */
+  private projectileSprites: Sprite[] = [];
 
   private constructor(
     private readonly app: Application,
@@ -244,6 +344,8 @@ export class Renderer {
       this.bodyLayer,
       this.derelictLayer,
       this.gateLayer,
+      this.agentLayer,
+      this.projectileLayer,
       this.ship,
     );
     this.nebulaLayer.addChild(this.nebula.mesh);
@@ -311,6 +413,11 @@ export class Renderer {
     return this.app.renderer.name;
   }
 
+  /** Live GL agent-node count — verify-m6 asserts it tracks the agent list. */
+  get agentNodeCount(): number {
+    return this.agentNodes.size;
+  }
+
   /** RGBA snapshot of the GL stage (verify scripts; the canvas itself reads
    *  blank without preserveDrawingBuffer — extract is the supported path). */
   extractPixels(): { pixels: Uint8ClampedArray; width: number; height: number } {
@@ -331,10 +438,16 @@ export class Renderer {
     this.buildGates();
     this.derelictIds = ''; // force derelict rebuild on next draw
     this.derelictLayer.removeChildren();
+    // Agent ids restart at agent:0 in the next system — stale nodes must
+    // never be reused across a jump (wrong type/faction under the same id).
+    this.agentNodes.clear();
+    for (const c of this.agentLayer.removeChildren()) c.destroy({ children: true });
   }
 
   /** `gates` is the active list (spec gates + any §4.2 injected return gate);
-   *  `derelicts` is the unlooted remainder (salvage.ts, filtered by main.ts). */
+   *  `derelicts` is the unlooted remainder (salvage.ts, filtered by main.ts);
+   *  `agents`/`projectiles` are the live §15 encounter lists (ephemeral,
+   *  never canon — the renderer just mirrors them into GL each frame). */
   draw(
     spec: SystemSpec,
     gates: readonly GateSpec[],
@@ -342,6 +455,8 @@ export class Renderer {
     t: number,
     hud: HudState,
     derelicts: readonly Derelict[] = [],
+    agents: readonly Agent[] = [],
+    projectiles: readonly Projectile[] = [],
   ): void {
     const { width, height } = this.overlay.canvas;
 
@@ -354,6 +469,8 @@ export class Renderer {
       this.buildGateNodes(gates);
     }
     this.syncDerelicts(derelicts);
+    this.syncAgents(agents, t);
+    this.syncProjectiles(projectiles);
 
     this.world.position.set(width / 2 - ship.x, height / 2 - ship.y);
     this.starfield.position.set(
@@ -806,6 +923,98 @@ export class Renderer {
       label.position.set(0, 12);
       root.addChild(hull, label);
       this.derelictLayer.addChild(root);
+    }
+  }
+
+  /** Mirror the live agent list into GL: create/destroy by id (the
+   *  syncDerelicts discipline, but per-node so survivors keep their sprites),
+   *  then per-frame transform + trail/threat/hull-bar updates. */
+  private syncAgents(agents: readonly Agent[], t: number): void {
+    for (const [id, node] of this.agentNodes) {
+      if (!agents.some((a) => a.id === id)) {
+        this.agentLayer.removeChild(node.root);
+        node.root.destroy({ children: true });
+        this.agentNodes.delete(id);
+      }
+    }
+    for (const a of agents) {
+      let node = this.agentNodes.get(a.id);
+      if (!node) {
+        node = this.makeAgentNode(a);
+        this.agentNodes.set(a.id, node);
+        this.agentLayer.addChild(node.root);
+      }
+      node.root.position.set(a.x, a.y);
+      node.shipC.rotation = a.heading;
+      // Engine trail brightens with speed, with a light flicker.
+      const sp = Math.min(1, Math.hypot(a.vx, a.vy) / 300);
+      node.trail.alpha = sp * (0.55 + 0.18 * Math.sin(t * 37 + node.phase));
+      node.hostileRing.visible = a.hostile;
+      if (a.hostile) node.hostileRing.alpha = 0.35 + 0.25 * Math.sin(t * 6 + node.phase);
+      const frac = Math.max(0, Math.min(1, a.hull / a.hullMax));
+      node.bar.visible = frac < 1;
+      node.barFg.scale.x = frac;
+    }
+  }
+
+  private makeAgentNode(a: Agent): AgentNode {
+    const { trim } = agentPaint(a);
+    const root = new Container();
+
+    const shipC = new Container();
+    const trail = new Sprite(this.glowTex);
+    trail.anchor.set(0.5);
+    trail.position.set(-a.radius - 5, 0);
+    trail.scale.set(0.16, 0.06);
+    trail.blendMode = 'add';
+    trail.tint = trim;
+    trail.alpha = 0;
+    const hull = new Graphics();
+    drawAgentHull(hull, a);
+    shipC.addChild(trail, hull);
+
+    const hostileRing = new Graphics()
+      .circle(0, 0, a.radius + 5)
+      .stroke({ width: 1.2, color: 0xff6b4a, alpha: 0.8 });
+    hostileRing.visible = false;
+
+    // Hull bar above the ship (screen-up = −y), unrotated; fg anchors left
+    // by drawing from x=0 in a container offset half a bar-width.
+    const bar = new Container();
+    bar.position.set(-8, -a.radius - 8);
+    const barBg = new Graphics().rect(0, 0, 16, 2).fill({ color: 0x241c22, alpha: 0.85 });
+    const barFg = new Graphics().rect(0, 0, 16, 2).fill(0xff6b4a);
+    bar.addChild(barBg, barFg);
+    bar.visible = false;
+
+    root.addChild(shipC, hostileRing, bar);
+    const phase = (hash128(a.id)[0]! / 0x1_0000_0000) * Math.PI * 2;
+    return { root, shipC, trail, hostileRing, bar, barFg, phase };
+  }
+
+  /** Tracers: a pooled additive glow per live projectile, stretched along
+   *  its velocity; player shots cyan, hostile shots red (the §15 colors). */
+  private syncProjectiles(shots: readonly Projectile[]): void {
+    while (this.projectileSprites.length < shots.length) {
+      const s = new Sprite(this.glowTex);
+      s.anchor.set(0.5);
+      s.blendMode = 'add';
+      s.scale.set(0.2, 0.055);
+      this.projectileLayer.addChild(s);
+      this.projectileSprites.push(s);
+    }
+    for (let i = 0; i < this.projectileSprites.length; i++) {
+      const sprite = this.projectileSprites[i]!;
+      const shot = shots[i];
+      if (!shot) {
+        sprite.visible = false;
+        continue;
+      }
+      sprite.visible = true;
+      sprite.position.set(shot.x, shot.y);
+      sprite.rotation = Math.atan2(shot.vy, shot.vx);
+      sprite.tint = shot.fromPlayer ? 0x7fd4ff : 0xff6b4a;
+      sprite.alpha = Math.min(1, shot.ttl / 0.25); // fade out at end of life
     }
   }
 
