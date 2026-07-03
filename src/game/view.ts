@@ -59,6 +59,8 @@ export interface HudState {
   adrift?: boolean;
   /** 0..1 recent-damage intensity; drives the red vignette. */
   damageFlash?: number;
+  /** M6: main thrust held this frame; drives the ship's engine plume. */
+  thrusting?: boolean;
 }
 
 /** Orbital position at time t (types.ts convention). */

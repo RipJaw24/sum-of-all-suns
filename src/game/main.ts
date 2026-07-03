@@ -818,7 +818,8 @@ async function boot(): Promise<void> {
         dt,
       );
     }
-    audio.setThrust(!jumping && !dying && input.isHeld('KeyW', 'ArrowUp'));
+    const thrusting = !jumping && !dying && input.isHeld('KeyW', 'ArrowUp');
+    audio.setThrust(thrusting);
 
     if (input.wasPressed('Tab', 'KeyM')) mapOpen = !mapOpen;
 
@@ -972,6 +973,7 @@ async function boot(): Promise<void> {
       ...(nearBody && !siteOpen ? { subPrompt: `[Q] scan ${nearBody.name}` } : {}),
       adrift,
       damageFlash: dying ? 1 : damageFlash,
+      thrusting,
       ...(hazardLabel ? { hazardLabel } : {}),
       ...(t < eventUntil
         ? { notice: eventMsg }

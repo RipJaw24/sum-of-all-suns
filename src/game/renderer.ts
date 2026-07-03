@@ -222,7 +222,11 @@ export class Renderer {
   private readonly bodyLayer = new Container();
   private readonly derelictLayer = new Container();
   private readonly gateLayer = new Container();
-  private readonly ship = new Graphics();
+  private readonly ship = new Container();
+  private readonly shipGlow: Sprite;
+  private readonly shipShield = new Graphics();
+  /** 0..1 eased thrust level; the plume ramps rather than snapping. */
+  private engineLevel = 0;
 
   private starNodes: StarNode[] = [];
   private starClass: StarSpec['class'] | null = null;
@@ -245,9 +249,44 @@ export class Renderer {
     this.nebulaLayer.addChild(this.nebula.mesh);
     app.stage.addChild(this.nebulaLayer, this.starfield, this.world);
 
-    this.ship
-      .poly([12, 0, -8, 7, -4, 0, -8, -7])
-      .fill(0xe8edf7);
+    // M6 Phase 3 player ship: engine plume (behind) + layered hull + shield
+    // shimmer (in front). Same ~24px footprint as the old placeholder poly.
+    this.shipGlow = new Sprite(glowTexture('#9fe0ff'));
+    this.shipGlow.anchor.set(0.5);
+    this.shipGlow.position.set(-14, 0);
+    this.shipGlow.scale.set(0.26, 0.1);
+    this.shipGlow.blendMode = 'add';
+    this.shipGlow.alpha = 0;
+
+    const hull = new Graphics();
+    // Swept wing blades, under the fuselage.
+    hull
+      .poly([1, 2.4, -7.5, 8.2, -9.5, 7.2, -5.5, 2.4])
+      .poly([1, -2.4, -7.5, -8.2, -9.5, -7.2, -5.5, -2.4])
+      .fill(0xaeb9cd);
+    // Central fuselage: a sleek dart, nose at +X (heading convention).
+    hull
+      .poly([13, 0, 3, 3.1, -6.5, 4, -9, 2.2, -9, -2.2, -6.5, -4, 3, -3.1])
+      .fill(0xe8edf7)
+      .stroke({ width: 1, color: 0x9aa7bd, alpha: 0.8 });
+    // Engine block + twin nozzles at the tail.
+    hull.rect(-10.5, -3, 2.4, 6).fill(0x8b96ab);
+    hull.rect(-11.8, -2.3, 1.5, 1.8).rect(-11.8, 0.5, 1.5, 1.8).fill(0x69748a);
+    // Canopy near the nose, in the player accent cyan (matches player shots).
+    hull.poly([9, 0, 4.5, 1.7, 1.5, 1.2, 1.5, -1.2, 4.5, -1.7]).fill({ color: 0x7fd4ff, alpha: 0.95 });
+
+    // Shield shimmer: three arc segments around the hull; alpha follows the
+    // damageFlash signal (same source as the red vignette) and spins in draw().
+    for (let i = 0; i < 3; i++) {
+      const a0 = (i * Math.PI * 2) / 3;
+      this.shipShield
+        .moveTo(Math.cos(a0) * 17, Math.sin(a0) * 17)
+        .arc(0, 0, 17, a0, a0 + 1.35);
+    }
+    this.shipShield.stroke({ width: 1.6, color: 0x7fd4ff, alpha: 0.9 });
+    this.shipShield.alpha = 0;
+
+    this.ship.addChild(this.shipGlow, hull, this.shipShield);
   }
 
   static async create(
@@ -355,6 +394,16 @@ export class Renderer {
     }
     this.ship.position.set(ship.x, ship.y);
     this.ship.rotation = ship.heading;
+    // Engine plume: ease toward the thrust state, flicker while lit — cheap
+    // per-frame alpha/scale tweaks, same budget as the station light blink.
+    this.engineLevel += ((hud.thrusting ? 1 : 0) - this.engineLevel) * 0.35;
+    if (this.engineLevel < 0.005) this.engineLevel = 0;
+    const plume = 0.82 + 0.18 * Math.sin(t * 43);
+    this.shipGlow.alpha = this.engineLevel * plume;
+    this.shipGlow.scale.set(0.26 * (0.7 + 0.45 * this.engineLevel * plume), 0.1);
+    // Shield shimmer on recent damage.
+    this.shipShield.alpha = Math.min(1, hud.damageFlash ?? 0) * 0.6;
+    this.shipShield.rotation = t * 2.4;
 
     this.app.render();
 
