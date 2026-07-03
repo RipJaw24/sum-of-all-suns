@@ -75,6 +75,7 @@ npx vite-node scripts/verify-m2.ts     # M2: hull/credits/docking/death/decrypt
 npx vite-node scripts/verify-m3.ts     # M3: trade/lore/anomalies/nebula
 npx vite-node scripts/verify-m4.ts     # M4: menu/pause/fail-early/survive-N victory
 npx vite-node scripts/verify-m5.ts     # M5: factions/habitation/NPCs/standing→price/combat death
+npx vite-node scripts/verify-m6.ts     # M6: GL station/NPC/tracer nodes; faction-tinted gates + HUD
 npx vite-node scripts/screenshot.ts    # Visual inspection screenshot
 ```
 
@@ -109,7 +110,7 @@ Run state (fuel, route, visited gates, per-faction standing) is kept strictly se
 | **M3** | ✅ | Trade goods; lore fragments; anomaly systems; nebula backgrounds; PixiJS |
 | **M4** | ✅ | Main menu + pause; run goal (survive N jumps); audio; fail-early offline UX; secret-keeping audit; balance; ship (v1) |
 | **M5** | ✅ | The Living Galaxy: factions from category clusters; life/habitation; NPC agents (traders/patrols/pirates); light combat; per-faction standing; faction-priced stations; random events + Erasure foreshadow |
-| **M6** | 🔜 | Visual identity: faction/habitation-styled station graphics; player-ship graphics pass; body rendering refinement; NPC sprites; faction-colored UI |
+| **M6** | ✅ | Visual identity: faction/habitation-styled station graphics; biome-tinted worlds with night lights + atmospheres; player-ship pass (hull/engine plume/shield); NPCs + projectiles in the GL scene; faction-colored UI (emblems, standing bar, destination-tinted gates) |
 | **M7** | 🔜 | Soundscape: combat/NPC/event SFX; per-faction & per-habitation ambient beds; jump/dock/UI audio polish (full pass beyond M4's minimal SFX) |
 
 ---

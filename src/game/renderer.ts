@@ -421,6 +421,11 @@ export class Renderer {
     return this.agentNodes.size;
   }
 
+  /** GL station nodes in the scene — verify-m6 asserts one per stationed body. */
+  get stationNodeCount(): number {
+    return this.bodyNodes.filter((n) => n.station).length;
+  }
+
   /** Destination-faction tints for gate markers (main.ts resolves them async
    *  from cached metadata). Invalidates gate nodes; draw() rebuilds lazily. */
   setGateTints(tints: ReadonlyMap<string, string>): void {

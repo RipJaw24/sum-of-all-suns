@@ -329,8 +329,11 @@ async function boot(): Promise<void> {
       // §15/§16 verify hooks: live encounter state (ephemeral, never persisted).
       agentsNow: () => agents,
       projectilesNow: () => projectiles,
-      // M6 Phase 4 verify: GL agent-node count must track the live list.
+      // M6 verify hooks: GL node counts must track the live/spec state, and
+      // gate tints must only ever name non-uncharted gates (§4.5).
       agentSpritesNow: () => renderer.agentNodeCount,
+      stationNodesNow: () => renderer.stationNodeCount,
+      gateTintsNow: () => Object.fromEntries(gateTints),
       beaconNow: () => beacon,
       event: seededEvent(spec),
       // §13.3 verify: effective (faction/standing-adjusted) price for a good.

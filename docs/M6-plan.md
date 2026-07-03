@@ -1,6 +1,6 @@
 # M6 — Visual Identity Pass ("the seams stay hidden, the galaxy gets a face")
 
-> Status: 🔜 planned. Branch target: `m6-visual-identity` (off `main` after M5 merges).
+> Status: ✅ shipped (all six phases, July 2026). Branch: `m6-visual-identity`.
 
 M6 turns the simulation M5 shipped into something that *looks* like a living galaxy:
 faction-styled stations, NPC ships with real presence, refined worlds, a proper
