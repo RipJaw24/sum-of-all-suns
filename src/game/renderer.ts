@@ -43,7 +43,7 @@ import type { ShipState } from './ship';
 import { type HullStyle, type StationStyle, factionVisual } from './factionVisuals';
 import { biomeVisual, habitationVisual } from './habitationVisuals';
 import { mixHex } from './palettes';
-import { GATE_COLORS, bodyPosition, gatePosition, type HudState } from './view';
+import { GATE_COLORS, bodyPosition, drawEmblem, gatePosition, type HudState } from './view';
 
 const LABEL_STYLE = { fontFamily: 'monospace', fontSize: 11, fill: 0xcdd6f4 } as const;
 
@@ -333,6 +333,9 @@ export class Renderer {
   private agentNodes = new Map<string, AgentNode>();
   /** Tracer sprite pool; grows to the high-water mark, never shrinks. */
   private projectileSprites: Sprite[] = [];
+  /** gate.id → destination faction tint (M6 Phase 5, resolved async by
+   *  main.ts from cached metadata; uncharted gates never appear here). */
+  private gateTints: ReadonlyMap<string, string> = new Map();
 
   private constructor(
     private readonly app: Application,
@@ -418,6 +421,14 @@ export class Renderer {
     return this.agentNodes.size;
   }
 
+  /** Destination-faction tints for gate markers (main.ts resolves them async
+   *  from cached metadata). Invalidates gate nodes; draw() rebuilds lazily. */
+  setGateTints(tints: ReadonlyMap<string, string>): void {
+    this.gateTints = tints;
+    this.gateLayer.removeChildren();
+    this.gateNodes = [];
+  }
+
   /** RGBA snapshot of the GL stage (verify scripts; the canvas itself reads
    *  blank without preserveDrawingBuffer — extract is the supported path). */
   extractPixels(): { pixels: Uint8ClampedArray; width: number; height: number } {
@@ -438,6 +449,7 @@ export class Renderer {
     this.buildGates();
     this.derelictIds = ''; // force derelict rebuild on next draw
     this.derelictLayer.removeChildren();
+    this.gateTints = new Map(); // stale destination tints never cross a jump
     // Agent ids restart at agent:0 in the next system — stale nodes must
     // never be reused across a jump (wrong type/faction under the same id).
     this.agentNodes.clear();
@@ -884,9 +896,13 @@ export class Renderer {
       const size = 12;
       const root = new Container();
       root.position.set(pos.x, pos.y);
+      // Base kind color mixed toward the destination faction's tint where
+      // known (M6 Phase 5); uncharted gates stay pure kind-colored (§4.5).
+      const ft = this.gateTints.get(gate.id);
+      const color = ft ? mixHex(GATE_COLORS[gate.kind], ft, 0.65) : GATE_COLORS[gate.kind];
       const diamond = new Graphics()
         .poly([0, -size, size, 0, 0, size, -size, 0])
-        .stroke({ width: 2, color: GATE_COLORS[gate.kind] });
+        .stroke({ width: 2, color });
       root.addChild(diamond);
       // Charted gates show where they lead; uncharted are unscannable (§4.5).
       if (gate.kind !== 'uncharted') {
@@ -1061,7 +1077,9 @@ export class Renderer {
     ctx.fillStyle = 'rgba(205, 214, 244, 0.8)';
     ctx.fillText(`${hud.credits} cr · CARGO ${hud.cargo}/${hud.cargoMax}`, 16, 100);
 
-    // M5 §13: controlling faction + standing (faction-tinted name).
+    // M5 §13 + M6 Phase 5: emblem chip, faction-tinted name, contested in the
+    // warning amber the station accent already uses, and a centered-zero
+    // standing bar (−100..+100, reputation.ts bounds).
     let noticeY = 124;
     if (hud.faction !== undefined) {
       if (hud.faction === null) {
@@ -1069,10 +1087,35 @@ export class Renderer {
         ctx.fillText('UNALIGNED FRONTIER', 16, 122);
       } else {
         const f = hud.faction;
+        const fv = spec.faction ? factionVisual(spec.faction.id) : null;
+        let nameX = 16;
+        if (fv) {
+          drawEmblem(ctx, fv.emblem, 23, 118, 7, fv.accent);
+          nameX = 36;
+        }
         ctx.fillStyle = f.tint;
-        ctx.fillText(`${f.name}${f.contested ? ' · CONTESTED' : ''}`, 16, 122);
+        ctx.fillText(f.name, nameX, 122);
+        if (f.contested) {
+          const w = ctx.measureText(f.name).width;
+          ctx.fillStyle = '#ffb35e';
+          ctx.fillText(' · CONTESTED', nameX + w, 122);
+        }
+        // Standing bar: zero at center, green right of it, red left.
+        const barX = 16;
+        const barW = 140;
+        const mid = barX + barW / 2;
+        ctx.fillStyle = 'rgba(205, 214, 244, 0.25)';
+        ctx.fillRect(barX, 130, barW, 5);
+        ctx.fillStyle = 'rgba(205, 214, 244, 0.6)';
+        ctx.fillRect(mid, 128, 1, 9);
+        const frac = Math.max(-1, Math.min(1, f.standing / 100));
+        if (frac !== 0) {
+          ctx.fillStyle = frac > 0 ? '#9ee887' : '#ff6b4a';
+          if (frac > 0) ctx.fillRect(mid, 130, (barW / 2) * frac, 5);
+          else ctx.fillRect(mid + (barW / 2) * frac, 130, (barW / 2) * -frac, 5);
+        }
         ctx.fillStyle = f.standing > 0 ? '#9ee887' : f.standing < 0 ? '#ff6b4a' : 'rgba(205, 214, 244, 0.7)';
-        ctx.fillText(`STANDING ${f.standing > 0 ? '+' : ''}${f.standing}`, 16, 138);
+        ctx.fillText(`${f.standing > 0 ? '+' : ''}${f.standing}`, 164, 138);
       }
       noticeY = 162;
     }

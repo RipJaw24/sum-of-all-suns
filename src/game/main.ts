@@ -30,7 +30,7 @@ import {
   seededEvent,
 } from './events';
 import { adjustStanding, effectiveGoodPrice, standingOf } from './reputation';
-import { factionById } from '../gen/factions';
+import { factionById, factionFor } from '../gen/factions';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -173,6 +173,8 @@ async function boot(): Promise<void> {
   let spec!: SystemSpec;
   let gates: GateSpec[] = [];
   let derelicts: Derelict[] = [];
+  /** M6 Phase 5: gate.id → destination faction tint (async, cache-fed). */
+  let gateTints = new Map<string, string>();
   // §15 ephemeral encounter state — re-seeded per system, never persisted.
   let agents: Agent[] = [];
   let projectiles: Projectile[] = [];
@@ -268,6 +270,23 @@ async function boot(): Promise<void> {
     renderer.setSystem(spec);
     // §8: warm the cache for every reachable system so jumps never stall.
     cache.prefetch(gates.map((g) => g.destinationTitle));
+
+    // M6 Phase 5: tint gate markers by destination faction where known.
+    // Rides the prefetch (cache.get dedupes in-flight lookups — no extra
+    // fetches); uncharted gates are skipped, staying unscannable (§4.5).
+    // traffic only flips `contested`, so 0 is fine — only the id is used.
+    gateTints = new Map();
+    const forSpec = spec;
+    for (const g of gates) {
+      if (g.kind === 'uncharted') continue;
+      void cache.get(g.destinationTitle).then(({ meta: destMeta }) => {
+        if (spec !== forSpec) return; // resolved after another jump
+        const f = factionFor(destMeta, 0);
+        if (!f) return;
+        gateTints.set(g.id, factionById(f.id).tint);
+        renderer.setGateTints(gateTints);
+      });
+    }
 
     // §16 random events: the deterministic system flavor (same for everyone),
     // then an ephemeral encounter roll. Ship is positioned by now, so an
@@ -957,7 +976,7 @@ async function boot(): Promise<void> {
     );
     if (!jumping) drawEncounter();
     if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
-    if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);
+    if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t, gateTints);
 
     if (DEBUG) {
       Object.assign(debugState, {

@@ -5,6 +5,7 @@
  */
 
 import type { BodySpec, GateSpec } from '../types';
+import type { EmblemMotif } from './factionVisuals';
 
 export const BODY_COLORS: Record<BodySpec['type'], string> = {
   rocky: '#a08a72',
@@ -71,4 +72,77 @@ export function bodyPosition(body: BodySpec, t: number): { x: number; y: number 
 
 export function gatePosition(gate: GateSpec): { x: number; y: number } {
   return { x: Math.cos(gate.angle) * gate.rimRadius, y: Math.sin(gate.angle) * gate.rimRadius };
+}
+
+/**
+ * M6 §13.2: draw a faction emblem motif (factionVisuals EMBLEM_BY_DISPOSITION)
+ * as a small stroked glyph at (x, y), radius r. Procedural 2D — shared by the
+ * HUD chip and the chart, never an asset file.
+ */
+export function drawEmblem(
+  ctx: CanvasRenderingContext2D,
+  motif: EmblemMotif,
+  x: number,
+  y: number,
+  r: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(1, r * 0.22);
+  ctx.beginPath();
+  switch (motif) {
+    case 'ring': // merchant: docking torus
+      ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    case 'chevron': // militarist: sergeant stripes
+      ctx.moveTo(-r * 0.8, 0);
+      ctx.lineTo(0, -r * 0.7);
+      ctx.lineTo(r * 0.8, 0);
+      ctx.moveTo(-r * 0.8, r * 0.7);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(r * 0.8, r * 0.7);
+      ctx.stroke();
+      break;
+    case 'orbit': // scientific: electron path
+      ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r, r * 0.45, -Math.PI / 5, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    case 'gear': { // industrial: toothed wheel
+      ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+      ctx.stroke();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55);
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'flame': // zealot: rising flame
+      ctx.moveTo(0, -r);
+      ctx.quadraticCurveTo(r * 0.9, -r * 0.1, 0, r * 0.9);
+      ctx.quadraticCurveTo(-r * 0.9, -r * 0.1, 0, -r);
+      ctx.stroke();
+      break;
+    case 'fang': // outlaw: twin fangs
+      ctx.moveTo(-r * 0.7, -r * 0.6);
+      ctx.lineTo(-r * 0.35, r * 0.8);
+      ctx.lineTo(0, -r * 0.2);
+      ctx.lineTo(r * 0.35, r * 0.8);
+      ctx.lineTo(r * 0.7, -r * 0.6);
+      ctx.stroke();
+      break;
+  }
+  ctx.restore();
 }
