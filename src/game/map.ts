@@ -5,8 +5,11 @@
  * computed here. Uncharted gates stay unscannable (§4.5): no name, no cost.
  */
 
+import { factionById } from '../gen/factions';
 import type { GateSpec, SystemSpec } from '../types';
-import { GATE_COLORS, bodyPosition, gatePosition } from './view';
+import { factionVisual } from './factionVisuals';
+import { mixHex } from './palettes';
+import { GATE_COLORS, bodyPosition, drawEmblem, gatePosition } from './view';
 import { jumpCost, type RunState } from './run';
 import type { ShipState } from './ship';
 
@@ -19,6 +22,8 @@ export function drawMap(
   ship: ShipState,
   run: RunState,
   t: number,
+  /** M6 Phase 5: gate.id → destination faction tint, where cached. */
+  gateTints: ReadonlyMap<string, string> = new Map(),
 ): void {
   const { width, height } = ctx.canvas;
 
@@ -59,19 +64,28 @@ export function drawMap(
     ctx.fill();
   }
 
-  // Bodies at their CURRENT orbital position.
+  // Bodies at their CURRENT orbital position. Stationed bodies take the
+  // controlling faction's color + disposition emblem (M6 Phase 5); the
+  // unaligned frontier keeps the neutral cyan.
+  const fv = spec.faction ? factionVisual(spec.faction.id) : null;
+  const stationColor = fv?.tint ?? '#7fd4ff';
   ctx.font = '11px monospace';
   ctx.textAlign = 'center';
   for (const body of spec.bodies) {
     const pos = bodyPosition(body, t);
     const x = pos.x * scale;
     const y = pos.y * scale;
-    ctx.fillStyle = body.station ? '#7fd4ff' : 'rgba(205, 214, 244, 0.9)';
+    ctx.fillStyle = body.station ? stationColor : 'rgba(205, 214, 244, 0.9)';
     ctx.beginPath();
     ctx.arc(x, y, BODY_DOT, 0, Math.PI * 2);
     ctx.fill();
+    if (body.station && fv) drawEmblem(ctx, fv.emblem, x, y - 12, 5, fv.accent);
+    else if (body.station) {
+      ctx.strokeStyle = stationColor;
+      ctx.strokeRect(x - 3, y - 14, 6, 6); // neutral relay tick
+    }
     ctx.fillStyle = 'rgba(205, 214, 244, 0.7)';
-    ctx.fillText(body.name + (body.station ? ' ◇' : ''), x, y + 16);
+    ctx.fillText(body.name, x, y + 16);
   }
 
   // Gates with destination + fuel cost; uncharted stay unscannable (§4.5).
@@ -80,7 +94,8 @@ export function drawMap(
     const x = pos.x * scale;
     const y = pos.y * scale;
     const s = 6;
-    ctx.strokeStyle = GATE_COLORS[gate.kind];
+    const ft = gateTints.get(gate.id);
+    ctx.strokeStyle = ft ? mixHex(GATE_COLORS[gate.kind], ft, 0.65) : GATE_COLORS[gate.kind];
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, y - s);
@@ -124,4 +139,16 @@ export function drawMap(
     16,
     46,
   );
+  // Controlling faction, emblem + tint matching the HUD (M6 Phase 5).
+  if (fv && spec.faction) {
+    const name = factionById(spec.faction.id).name;
+    drawEmblem(ctx, fv.emblem, 22, 60, 6, fv.accent);
+    ctx.fillStyle = fv.tint;
+    ctx.fillText(name, 34, 64);
+    if (spec.faction.contested) {
+      const w = ctx.measureText(name).width;
+      ctx.fillStyle = '#ffb35e';
+      ctx.fillText(' · CONTESTED', 34 + w, 64);
+    }
+  }
 }

@@ -46,6 +46,14 @@ export function rgbToNumber(c: Rgb): number {
   return (Math.round(c.r) << 16) | (Math.round(c.g) << 8) | Math.round(c.b);
 }
 
+/** M6 §14 biome tint: a color nudged into a surface per pixel. Applied as a
+ *  pure transform at the end of the color mix — no new rng draw, so existing
+ *  systems keep their geometry and only their hue shifts. */
+export interface SurfaceTint {
+  color: Rgb;
+  strength: number;
+}
+
 const GAS_PALETTES: ReadonlyArray<readonly string[]> = [
   ['#f4d3a2', '#d8955d', '#9a6048', '#fff0c4'],
   ['#d7c7a6', '#a9967c', '#726f88', '#ecdfc1'],
@@ -236,6 +244,35 @@ export function moonShadeTexture(): Texture {
   return moonShade;
 }
 
+let nightShade: Texture | null = null;
+
+/** M6 §14 directional night-side shadow for terrestrial worlds — a disc-space
+ *  overlay that darkens the lower-right toward black (matching the sphere
+ *  shade's upper-left key light), deepening the terminator and giving city
+ *  lights a dark canvas to read against. Normal-blend, over the surface. */
+export function nightShadeTexture(): Texture {
+  if (nightShade) return nightShade;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createLinearGradient(size * 0.28, size * 0.28, size * 0.9, size * 0.9);
+  g.addColorStop(0, 'rgba(2,4,12,0)');
+  g.addColorStop(0.5, 'rgba(2,4,12,0.22)');
+  g.addColorStop(1, 'rgba(2,4,12,0.72)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'destination-in';
+  const clip = ctx.createRadialGradient(size / 2, size / 2, size * 0.46, size / 2, size / 2, size * 0.5);
+  clip.addColorStop(0, 'rgba(0,0,0,1)');
+  clip.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = clip;
+  ctx.fillRect(0, 0, size, size);
+  nightShade = Texture.from(canvas);
+  return nightShade;
+}
+
 /** Seamless-in-x pseudo-noise: a few sine octaves with INTEGER longitudinal
  *  frequencies, so the texture tiles horizontally without a seam. ~[0, 1]. */
 interface NoiseOctave {
@@ -279,7 +316,7 @@ function drawWrapped(ctx: CanvasRenderingContext2D, width: number, pass: () => v
   }
 }
 
-export function rockyTexture(seed: string, body: BodySpec): Texture {
+export function rockyTexture(seed: string, body: BodySpec, tint?: SurfaceTint): Texture {
   const [canvas, ctx] = planetCanvas();
   const rng = new Rng(hash128(`${seed}/planet:${body.id}:surface`));
   const palette = planetPalette(seed, body);
@@ -293,6 +330,7 @@ export function rockyTexture(seed: string, body: BodySpec): Texture {
       const n = octaveNoise(octs, x / canvas.width, lat);
       let c = mixColor(palette[0]!, palette[1]!, n);
       c = mixColor(c, palette[2]!, polar);
+      if (tint) c = mixColor(c, tint.color, tint.strength);
       const i = (y * canvas.width + x) * 4;
       img.data[i] = c.r;
       img.data[i + 1] = c.g;
@@ -325,7 +363,7 @@ export function rockyTexture(seed: string, body: BodySpec): Texture {
   return Texture.from(canvas);
 }
 
-export function iceTexture(seed: string, body: BodySpec): Texture {
+export function iceTexture(seed: string, body: BodySpec, tint?: SurfaceTint): Texture {
   const [canvas, ctx] = planetCanvas();
   const rng = new Rng(hash128(`${seed}/planet:${body.id}:surface`));
   const palette = planetPalette(seed, body);
@@ -340,6 +378,7 @@ export function iceTexture(seed: string, body: BodySpec): Texture {
       const n = octaveNoise(octs, x / canvas.width, lat);
       let c = mixColor(palette[0]!, palette[1]!, n * 0.7);
       c = mixColor(c, white, polar);
+      if (tint) c = mixColor(c, tint.color, tint.strength);
       const i = (y * canvas.width + x) * 4;
       img.data[i] = c.r;
       img.data[i + 1] = c.g;
@@ -476,7 +515,7 @@ export function lavaTextures(seed: string, body: BodySpec): { crust: Texture; gl
   return { crust: Texture.from(crustCanvas), glow: Texture.from(glowCanvas) };
 }
 
-export function oceanTexture(seed: string, body: BodySpec): Texture {
+export function oceanTexture(seed: string, body: BodySpec, tint?: SurfaceTint): Texture {
   const [canvas, ctx] = planetCanvas();
   const rng = new Rng(hash128(`${seed}/planet:${body.id}:surface`));
   const palette = planetPalette(seed, body);
@@ -501,6 +540,7 @@ export function oceanTexture(seed: string, body: BodySpec): Texture {
         // Water: deep → shallow.
         c = mixColor(palette[0]!, palette[1]!, n / landThreshold);
       }
+      if (tint) c = mixColor(c, tint.color, tint.strength);
       const i = (y * canvas.width + x) * 4;
       img.data[i] = c.r;
       img.data[i + 1] = c.g;
@@ -536,6 +576,86 @@ export function oceanCloudTexture(seed: string, body: BodySpec): Texture {
     ctx.stroke();
   }
 
+  return Texture.from(canvas);
+}
+
+/**
+ * M6 §14 night-side city lights for an inhabited world. Unlike the surface
+ * textures (lon/lat, tiled onto the disc), this is DISC-SPACE — clustered
+ * settlement lights baked with the same upper-left lighting the sphere shade
+ * uses, so the glow only shows on the night side (lower-right) and dies at the
+ * lit limb. Drawn as an additive Sprite over the shade. `density` 0..1 scales
+ * the light count (habitation tier); `colorHex` is the biome's light hue.
+ */
+export function cityLightsTexture(seed: string, body: BodySpec, density: number, colorHex: string): Texture {
+  const size = PLANET_TEXTURE_SIZE;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const rng = new Rng(hash128(`${seed}/planet:${body.id}:citylights`));
+  const color = hexToRgb(colorHex);
+
+  // Lights cluster into a handful of settlements rather than scattering evenly.
+  const clusters = rng.int(3, 6);
+  const centers: [number, number][] = [];
+  for (let i = 0; i < clusters; i++) {
+    const a = rng.angle();
+    const r = rng.range(0, size * 0.4);
+    centers.push([size / 2 + Math.cos(a) * r, size / 2 + Math.sin(a) * r]);
+  }
+  // Bodies render at ~15–23 wu radius, so this 128px texture is downscaled ~4×;
+  // dots must be a few px here to survive as a visible point on the disc.
+  const total = Math.round(density * 55);
+  for (let i = 0; i < total; i++) {
+    const [cx, cy] = centers[rng.int(0, centers.length - 1)]!;
+    const x = cx + rng.range(-size * 0.1, size * 0.1);
+    const y = cy + rng.range(-size * 0.1, size * 0.1);
+    const r = rng.range(1.6, 3.4);
+    ctx.fillStyle = rgba(color, rng.range(0.6, 1));
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Fade to the lit side: keep lights toward lower-right (matches the shade's
+  // upper-left key light), so the day side reads dark/empty.
+  ctx.globalCompositeOperation = 'destination-in';
+  const fade = ctx.createLinearGradient(size * 0.2, size * 0.2, size * 0.85, size * 0.85);
+  fade.addColorStop(0, 'rgba(0,0,0,0)');
+  fade.addColorStop(0.55, 'rgba(0,0,0,0.35)');
+  fade.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, size, size);
+
+  // Clip to the disc.
+  const clip = ctx.createRadialGradient(size / 2, size / 2, size * 0.46, size / 2, size / 2, size * 0.5);
+  clip.addColorStop(0, 'rgba(0,0,0,1)');
+  clip.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = clip;
+  ctx.fillRect(0, 0, size, size);
+
+  return Texture.from(canvas);
+}
+
+/** A soft atmospheric limb glow — a transparent-cored ring that peeks past the
+ *  planet disc. Sized to ~1.6× the diameter when placed; sits BEHIND the disc
+ *  so only the limb shows. `colorHex` is the sky tint. */
+export function atmosphereTexture(colorHex: string): Texture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const color = hexToRgb(colorHex);
+  const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size / 2);
+  g.addColorStop(0, rgba(color, 0));
+  g.addColorStop(0.62, rgba(color, 0));
+  g.addColorStop(0.72, rgba(color, 0.5));
+  g.addColorStop(0.82, rgba(color, 0.16));
+  g.addColorStop(1, rgba(color, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
   return Texture.from(canvas);
 }
 

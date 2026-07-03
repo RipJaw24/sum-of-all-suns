@@ -30,7 +30,7 @@ import {
   seededEvent,
 } from './events';
 import { adjustStanding, effectiveGoodPrice, standingOf } from './reputation';
-import { factionById } from '../gen/factions';
+import { factionById, factionFor } from '../gen/factions';
 import {
   ArticleCache,
   IdbArticleStore,
@@ -126,19 +126,6 @@ type Interactable =
   | { kind: 'salvage'; derelict: Derelict }
   | { kind: 'distress'; beacon: DistressBeacon };
 
-/** Placeholder NPC color: hostiles red, else by type (§15.2). */
-function agentColor(a: Agent): string {
-  if (a.hostile) return '#ff6b4a';
-  switch (a.type) {
-    case 'patrol':
-      return '#7fd4ff';
-    case 'trader':
-      return '#9ee887';
-    default:
-      return '#aab0c0';
-  }
-}
-
 async function boot(): Promise<void> {
   // Two canvases (index.html): Pixi world in #game, 2D text overlays in
   // #overlay above it. All legacy ctx draws (dock/map/site/summary/fade)
@@ -186,6 +173,8 @@ async function boot(): Promise<void> {
   let spec!: SystemSpec;
   let gates: GateSpec[] = [];
   let derelicts: Derelict[] = [];
+  /** M6 Phase 5: gate.id → destination faction tint (async, cache-fed). */
+  let gateTints = new Map<string, string>();
   // §15 ephemeral encounter state — re-seeded per system, never persisted.
   let agents: Agent[] = [];
   let projectiles: Projectile[] = [];
@@ -282,6 +271,23 @@ async function boot(): Promise<void> {
     // §8: warm the cache for every reachable system so jumps never stall.
     cache.prefetch(gates.map((g) => g.destinationTitle));
 
+    // M6 Phase 5: tint gate markers by destination faction where known.
+    // Rides the prefetch (cache.get dedupes in-flight lookups — no extra
+    // fetches); uncharted gates are skipped, staying unscannable (§4.5).
+    // traffic only flips `contested`, so 0 is fine — only the id is used.
+    gateTints = new Map();
+    const forSpec = spec;
+    for (const g of gates) {
+      if (g.kind === 'uncharted') continue;
+      void cache.get(g.destinationTitle).then(({ meta: destMeta }) => {
+        if (spec !== forSpec) return; // resolved after another jump
+        const f = factionFor(destMeta, 0);
+        if (!f) return;
+        gateTints.set(g.id, factionById(f.id).tint);
+        renderer.setGateTints(gateTints);
+      });
+    }
+
     // §16 random events: the deterministic system flavor (same for everyone),
     // then an ephemeral encounter roll. Ship is positioned by now, so an
     // ambush can close on the player; a distress call drops a beacon to find.
@@ -323,6 +329,11 @@ async function boot(): Promise<void> {
       // §15/§16 verify hooks: live encounter state (ephemeral, never persisted).
       agentsNow: () => agents,
       projectilesNow: () => projectiles,
+      // M6 verify hooks: GL node counts must track the live/spec state, and
+      // gate tints must only ever name non-uncharted gates (§4.5).
+      agentSpritesNow: () => renderer.agentNodeCount,
+      stationNodesNow: () => renderer.stationNodeCount,
+      gateTintsNow: () => Object.fromEntries(gateTints),
       beaconNow: () => beacon,
       event: seededEvent(spec),
       // §13.3 verify: effective (faction/standing-adjusted) price for a good.
@@ -355,6 +366,9 @@ async function boot(): Promise<void> {
         return a;
       },
       extractPixels: () => renderer.extractPixels(),
+      // Live animation clock (accumulated unpaused time) — lets verify/
+      // screenshot scripts compute where an orbiting body is drawn right now.
+      clock: () => clock,
     });
   }
 
@@ -732,12 +746,13 @@ async function boot(): Promise<void> {
       faction: factionHud(),
       prompt: null,
     };
-    renderer.draw(spec, gates, ship, t, hud, derelicts);
+    renderer.draw(spec, gates, ship, t, hud, derelicts, agents, projectiles);
     drawEncounter();
   }
 
-  /** §15 placeholder NPC/projectile render on the 2D overlay (world→screen via
-   *  the ship-centered camera). M6 gives agents real sprites in the GL scene. */
+  /** §15 encounter overlay: agents + projectiles moved into the GL scene at
+   *  M6 Phase 4 (renderer.syncAgents/syncProjectiles); only the distress-
+   *  beacon text affordance still draws here. */
   function drawEncounter(): void {
     const cx = canvas.width / 2 - ship.x;
     const cy = canvas.height / 2 - ship.y;
@@ -755,33 +770,6 @@ async function boot(): Promise<void> {
       ctx.textAlign = 'center';
       ctx.fillText('distress beacon', bx, by + 26);
       ctx.textAlign = 'left';
-    }
-    for (const p of projectiles) {
-      ctx.fillStyle = p.fromPlayer ? '#7fd4ff' : '#ff6b4a';
-      ctx.beginPath();
-      ctx.arc(p.x + cx, p.y + cy, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    for (const a of agents) {
-      const sx = a.x + cx;
-      const sy = a.y + cy;
-      if (sx < -40 || sy < -40 || sx > canvas.width + 40 || sy > canvas.height + 40) continue;
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(a.heading);
-      ctx.beginPath();
-      ctx.moveTo(10, 0);
-      ctx.lineTo(-7, 6);
-      ctx.lineTo(-4, 0);
-      ctx.lineTo(-7, -6);
-      ctx.closePath();
-      ctx.fillStyle = agentColor(a);
-      ctx.fill();
-      ctx.restore();
-      if (a.hull < a.hullMax) {
-        ctx.fillStyle = 'rgba(255, 107, 74, 0.85)';
-        ctx.fillRect(sx - 8, sy - 12, 16 * Math.max(0, a.hull / a.hullMax), 2);
-      }
     }
   }
 
@@ -815,7 +803,8 @@ async function boot(): Promise<void> {
         dt,
       );
     }
-    audio.setThrust(!jumping && !dying && input.isHeld('KeyW', 'ArrowUp'));
+    const thrusting = !jumping && !dying && input.isHeld('KeyW', 'ArrowUp');
+    audio.setThrust(thrusting);
 
     if (input.wasPressed('Tab', 'KeyM')) mapOpen = !mapOpen;
 
@@ -969,6 +958,7 @@ async function boot(): Promise<void> {
       ...(nearBody && !siteOpen ? { subPrompt: `[Q] scan ${nearBody.name}` } : {}),
       adrift,
       damageFlash: dying ? 1 : damageFlash,
+      thrusting,
       ...(hazardLabel ? { hazardLabel } : {}),
       ...(t < eventUntil
         ? { notice: eventMsg }
@@ -977,10 +967,19 @@ async function boot(): Promise<void> {
           : {}),
     };
 
-    renderer.draw(spec, gates, ship, t, hud, derelicts);
+    renderer.draw(
+      spec,
+      gates,
+      ship,
+      t,
+      hud,
+      derelicts,
+      jumping ? [] : agents,
+      jumping ? [] : projectiles,
+    );
     if (!jumping) drawEncounter();
     if (siteOpen && nearBody && !mapOpen && !jumping) drawSite(ctx, nearBody, spec);
-    if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t);
+    if (mapOpen && !jumping) drawMap(ctx, spec, gates, ship, run, t, gateTints);
 
     if (DEBUG) {
       Object.assign(debugState, {
